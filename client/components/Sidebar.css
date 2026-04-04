@@ -1,0 +1,73 @@
+.sidebar {
+	position: absolute;
+	top: 50%;
+	right: 12px;
+	transform: translateY(-50%);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	z-index: 999;
+	background: rgba(17, 17, 23, 0.88);
+	backdrop-filter: blur(20px);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 14px;
+	padding: 6px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar__btn {
+	position: relative;
+	width: 42px;
+	height: 42px;
+	border: none;
+	border-radius: 10px;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.5);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar__btn:hover {
+	background: rgba(255, 255, 255, 0.08);
+	color: rgba(255, 255, 255, 0.85);
+	transform: scale(1.08);
+}
+
+.sidebar__btn--active {
+	background: rgba(255, 255, 255, 0.1);
+	color: var(--tool-color, #fff);
+	box-shadow: inset 0 0 0 1.5px var(--tool-color, rgba(255,255,255,0.2));
+}
+
+.sidebar__btn--active:hover {
+	background: rgba(255, 255, 255, 0.12);
+	color: var(--tool-color, #fff);
+}
+
+.sidebar__badge {
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	min-width: 16px;
+	height: 16px;
+	border-radius: 8px;
+	background: #ef4444;
+	color: #fff;
+	font-size: 9px;
+	font-weight: 700;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 4px;
+	font-family: 'Inter', sans-serif;
+	animation: badgePop 0.3s ease;
+}
+
+@keyframes badgePop {
+	0% { transform: scale(0); }
+	50% { transform: scale(1.2); }
+	100% { transform: scale(1); }
+}

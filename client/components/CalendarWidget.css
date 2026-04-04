@@ -1,0 +1,210 @@
+.calendar-widget {
+	position: absolute;
+	top: 60px;
+	left: 16px;
+	width: 340px;
+	background: rgba(17, 17, 23, 0.94);
+	backdrop-filter: blur(24px);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 16px;
+	z-index: 1001;
+	font-family: 'Inter', sans-serif;
+	color: #e0e0e8;
+	animation: calendarIn 0.3s ease;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+	overflow: hidden;
+}
+
+@keyframes calendarIn {
+	from { opacity: 0; transform: translateY(-10px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+.calendar-widget__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.calendar-widget__header-left {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 600;
+	font-size: 14px;
+}
+
+.calendar-widget__close {
+	background: none;
+	border: none;
+	color: rgba(255, 255, 255, 0.4);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 6px;
+}
+
+.calendar-widget__close:hover {
+	background: rgba(255, 255, 255, 0.08);
+	color: #fff;
+}
+
+.calendar-widget__connect {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 32px 16px;
+	gap: 8px;
+	text-align: center;
+}
+
+.calendar-widget__connect p {
+	margin: 0;
+	font-size: 14px;
+}
+
+.calendar-widget__connect-sub {
+	font-size: 12px !important;
+	color: rgba(255, 255, 255, 0.4);
+}
+
+.calendar-widget__connect-btn {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 10px;
+	padding: 10px 18px;
+	color: #e0e0e8;
+	font-size: 13px;
+	cursor: pointer;
+	margin-top: 8px;
+	font-family: 'Inter', sans-serif;
+	transition: all 0.2s;
+}
+
+.calendar-widget__connect-btn:hover {
+	background: rgba(255, 255, 255, 0.12);
+	transform: translateY(-1px);
+}
+
+.calendar-widget__content {
+	padding: 8px 0;
+}
+
+.calendar-widget__actions {
+	display: flex;
+	gap: 6px;
+	padding: 0 16px 8px;
+}
+
+.calendar-widget__refresh,
+.calendar-widget__create-btn {
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 6px;
+	padding: 4px 10px;
+	color: rgba(255, 255, 255, 0.6);
+	font-size: 11px;
+	cursor: pointer;
+	font-family: 'Inter', sans-serif;
+	transition: all 0.2s;
+}
+
+.calendar-widget__refresh:hover,
+.calendar-widget__create-btn:hover {
+	background: rgba(255, 255, 255, 0.1);
+}
+
+.calendar-widget__create-form {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 16px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.calendar-widget__create-form input {
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 6px;
+	padding: 6px 10px;
+	color: #e0e0e8;
+	font-size: 12px;
+	font-family: 'Inter', sans-serif;
+	outline: none;
+}
+
+.calendar-widget__create-form input:focus {
+	border-color: hsl(217, 80%, 50%);
+}
+
+.calendar-widget__create-form button {
+	background: linear-gradient(135deg, hsl(217, 80%, 50%), hsl(240, 70%, 55%));
+	border: none;
+	border-radius: 6px;
+	padding: 6px;
+	color: #fff;
+	font-size: 12px;
+	cursor: pointer;
+	font-family: 'Inter', sans-serif;
+}
+
+.calendar-widget__events {
+	max-height: 300px;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.calendar-widget__no-events {
+	text-align: center;
+	padding: 24px;
+	color: rgba(255, 255, 255, 0.3);
+	font-size: 13px;
+}
+
+.calendar-event {
+	padding: 10px 16px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+	transition: background 0.2s;
+}
+
+.calendar-event:hover {
+	background: rgba(255, 255, 255, 0.03);
+}
+
+.calendar-event--soon {
+	border-left: 3px solid #f59e0b;
+}
+
+.calendar-event__time {
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.4);
+}
+
+.calendar-event__title {
+	font-size: 13px;
+	font-weight: 500;
+	margin-top: 2px;
+}
+
+.calendar-event__location {
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.35);
+	margin-top: 2px;
+}
+
+.calendar-event__meet {
+	display: inline-block;
+	font-size: 11px;
+	color: hsl(217, 80%, 60%);
+	text-decoration: none;
+	margin-top: 4px;
+}
+
+.calendar-event__meet:hover {
+	text-decoration: underline;
+}

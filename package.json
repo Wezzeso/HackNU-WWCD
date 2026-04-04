@@ -1,0 +1,43 @@
+{
+	"name": "hacknu",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+		"dev:client": "vite",
+		"dev:server": "tsx watch server/index.ts",
+		"build": "tsc && vite build",
+		"build:server": "tsc -p server/tsconfig.json",
+		"preview": "vite preview",
+		"start": "node dist/server/index.js"
+	},
+	"dependencies": {
+		"@supabase/supabase-js": "^2.49.0",
+		"@tldraw/sync": "^4.5.7",
+		"@tldraw/sync-core": "^4.5.7",
+		"@tldraw/tlschema": "^4.5.7",
+		"cors": "^2.8.5",
+		"dotenv": "^16.4.7",
+		"express": "^5.1.0",
+		"lodash.throttle": "^4.1.1",
+		"react": "^19.2.1",
+		"react-dom": "^19.2.1",
+		"react-router-dom": "^6.28.2",
+		"tldraw": "^4.5.7",
+		"ws": "^8.18.0"
+	},
+	"devDependencies": {
+		"@types/cors": "^2.8.17",
+		"@types/express": "^5.0.0",
+		"@types/lodash.throttle": "^4.1.9",
+		"@types/react": "^19.2.7",
+		"@types/react-dom": "^19.2.3",
+		"@types/ws": "^8.5.13",
+		"@vitejs/plugin-react-swc": "^3.10.2",
+		"concurrently": "^9.1.2",
+		"tsx": "^4.19.0",
+		"typescript": "^5.8.3",
+		"vite": "^7.0.1"
+	}
+}
