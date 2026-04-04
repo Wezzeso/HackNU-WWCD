@@ -1,23 +1,29 @@
 import { WebSocket } from 'ws'
-import fs from 'fs'
+import { TLSocketRoom } from '@tldraw/sync-core'
 
-// ─── In-memory room store for tldraw sync ───
-// Each room holds a set of connected clients and document state
-interface TldrawRoom {
-	clients: Map<string, WebSocket>
-	// We store the document records as a simple key-value map
-	records: Map<string, any>
-}
+// ─── TLSocketRoom based sync ───
+const rooms = new Map<string, TLSocketRoom<any, any>>()
 
-const rooms = new Map<string, TldrawRoom>()
-
-function getOrCreateRoom(roomId: string): TldrawRoom {
+function getOrCreateRoom(roomId: string): TLSocketRoom<any, any> {
 	let room = rooms.get(roomId)
 	if (!room) {
-		room = {
-			clients: new Map(),
-			records: new Map(),
-		}
+		room = new TLSocketRoom({
+			clientTimeout: 60000,
+			onSessionRemoved: (r, args) => {
+				console.log(`[tldraw] Client ${args.sessionId} left room ${roomId} (${args.numSessionsRemaining} clients remaining)`)
+				if (args.numSessionsRemaining === 0) {
+					// Clean up empty rooms after a delay
+					setTimeout(() => {
+						const currentRoom = rooms.get(roomId)
+						if (currentRoom && currentRoom.getNumActiveSessions() === 0) {
+							currentRoom.close()
+							rooms.delete(roomId)
+							console.log(`[tldraw] Room ${roomId} cleaned up`)
+						}
+					}, 60000)
+				}
+			}
+		})
 		rooms.set(roomId, room)
 	}
 	return room
@@ -27,84 +33,31 @@ export function setupTldrawSync(ws: WebSocket, roomId: string, params: URLSearch
 	const sessionId = params.get('sessionId') || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`
 	const room = getOrCreateRoom(roomId)
 
-	room.clients.set(sessionId, ws)
-	console.log(`[tldraw] Client ${sessionId} joined room ${roomId} (${room.clients.size} clients)`)
+	console.log(`[tldraw] Client ${sessionId} joining room ${roomId}...`)
 
-	// Send current state to the new client
-	if (room.records.size > 0) {
-		const snapshot = Array.from(room.records.values())
-		ws.send(JSON.stringify({
-			type: 'init',
-			records: snapshot,
-		}))
+	// The `ws` package WebSocket doesn't always perfectly match the DOM WebSocket type expected
+	// by TLSocketRoom (specifically regarding addEventListener). 
+	// TLSocketRoom uses `handleSocketMessage`, `handleSocketClose`, `handleSocketError` directly 
+	// if we don't pass them in through socket, but the easiest way is to let handleSocketConnect try,
+	// and if `addEventListener` is missing, we wire it up manually.
+	room.handleSocketConnect({
+		sessionId,
+		socket: ws as any,
+	})
+
+	// ws package uses .on() mostly, so let's guarantee events are mapped:
+	if (!(ws as any).addEventListener) {
+		ws.on('message', (data) => room.handleSocketMessage(sessionId, data as any))
+		ws.on('close', () => room.handleSocketClose(sessionId))
+		ws.on('error', () => room.handleSocketError(sessionId))
 	}
-
-	ws.on('message', (data) => {
-		try {
-			const rawData = data.toString()
-			fs.writeFileSync('tldraw-msg.json', rawData + '\n', { flag: 'a' })
-			const message = JSON.parse(rawData)
-
-			// Handle different message types
-			if (message.type === 'update' && message.updates) {
-				// Apply updates to room state
-				for (const update of message.updates) {
-					if (update.type === 'put') {
-						room.records.set(update.record.id, update.record)
-					} else if (update.type === 'remove') {
-						room.records.delete(update.id)
-					}
-				}
-			}
-
-			// Broadcast to all other clients in the room
-			for (const [sid, client] of room.clients) {
-				if (sid !== sessionId && client.readyState === WebSocket.OPEN) {
-					client.send(data.toString())
-				}
-			}
-		} catch (err) {
-			console.error('[tldraw] Failed to parse message:', err)
-		}
-	})
-
-	ws.on('close', () => {
-		room.clients.delete(sessionId)
-		console.log(`[tldraw] Client ${sessionId} left room ${roomId} (${room.clients.size} clients)`)
-
-		// Clean up empty rooms after a delay
-		if (room.clients.size === 0) {
-			setTimeout(() => {
-				const r = rooms.get(roomId)
-				if (r && r.clients.size === 0) {
-					rooms.delete(roomId)
-					console.log(`[tldraw] Room ${roomId} cleaned up`)
-				}
-			}, 60000) // Keep room data for 1 minute after last client leaves
-		}
-
-		// Notify remaining clients about the disconnect
-		for (const [, client] of room.clients) {
-			if (client.readyState === WebSocket.OPEN) {
-				client.send(JSON.stringify({
-					type: 'presence',
-					action: 'leave',
-					sessionId,
-				}))
-			}
-		}
-	})
-
-	ws.on('error', (err) => {
-		console.error(`[tldraw] WebSocket error for ${sessionId}:`, err)
-		room.clients.delete(sessionId)
-	})
 }
 
 // Export for use by other modules
 export function getRoomClients(roomId: string): string[] {
 	const room = rooms.get(roomId)
-	return room ? Array.from(room.clients.keys()) : []
+	if (!room) return []
+	return room.getSessions().map(s => s.sessionId)
 }
 
 export function getActiveRooms(): string[] {

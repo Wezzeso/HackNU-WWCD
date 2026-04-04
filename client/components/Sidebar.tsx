@@ -1,99 +1,114 @@
-import { ReactNode } from 'react'
-import './Sidebar.css'
+import type { CSSProperties } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import { Bot, CalendarDays, MessageSquare, Music4, Send, Video } from 'lucide-react'
+import { cn } from '../lib/utils'
 
 export type PanelType = 'chat' | 'video' | 'gemini' | 'music' | 'calendar' | 'telegram' | null
+export type ToolPanel = Exclude<PanelType, null>
 
 interface SidebarProps {
-	activePanel: PanelType
-	onPanelChange: (panel: PanelType) => void
+	visiblePanels: Partial<Record<ToolPanel, boolean>>
+	onPanelChange: (panel: ToolPanel) => void
 	chatUnread: number
 }
 
-const TOOLS: { id: PanelType; icon: ReactNode; label: string; color: string }[] = [
+export const PANEL_TOOLS: Array<{
+	id: ToolPanel
+	label: string
+	description: string
+	color: string
+	icon: LucideIcon
+}> = [
 	{
 		id: 'chat',
 		label: 'Chat',
+		description: 'Messages and presence',
 		color: 'hsl(217, 80%, 50%)',
-		icon: (
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-				<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-			</svg>
-		),
+		icon: MessageSquare,
 	},
 	{
 		id: 'video',
 		label: 'Video Call',
+		description: 'Camera and screen share',
 		color: 'hsl(142, 70%, 45%)',
-		icon: (
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-				<path d="m22 8-6 4 6 4V8ZM4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
-			</svg>
-		),
+		icon: Video,
 	},
 	{
 		id: 'gemini',
 		label: 'Gemini AI',
+		description: 'Board-aware assistant',
 		color: 'hsl(260, 80%, 55%)',
-		icon: (
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-				<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-			</svg>
-		),
+		icon: Bot,
 	},
 	{
 		id: 'music',
 		label: 'Music',
+		description: 'Shared soundtrack',
 		color: 'hsl(300, 70%, 50%)',
-		icon: (
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-				<path d="M9 18V5l12-2v13" />
-				<circle cx="6" cy="18" r="3" />
-				<circle cx="18" cy="16" r="3" />
-			</svg>
-		),
+		icon: Music4,
 	},
 	{
 		id: 'calendar',
 		label: 'Calendar',
+		description: 'Events and timing',
 		color: 'hsl(45, 90%, 50%)',
-		icon: (
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-				<rect x="3" y="4" width="18" height="18" rx="2" />
-				<line x1="16" y1="2" x2="16" y2="6" />
-				<line x1="8" y1="2" x2="8" y2="6" />
-				<line x1="3" y1="10" x2="21" y2="10" />
-			</svg>
-		),
+		icon: CalendarDays,
 	},
 	{
 		id: 'telegram',
 		label: 'Telegram',
+		description: 'Share room updates',
 		color: 'hsl(199, 92%, 56%)',
-		icon: (
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-				<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
-			</svg>
-		),
+		icon: Send,
 	},
 ]
 
-export function Sidebar({ activePanel, onPanelChange, chatUnread }: SidebarProps) {
+export function Sidebar({ visiblePanels, onPanelChange, chatUnread }: SidebarProps) {
 	return (
-		<div className="sidebar">
-			{TOOLS.map(tool => (
-				<button
-					key={tool.id}
-					className={`sidebar__btn ${activePanel === tool.id ? 'sidebar__btn--active' : ''}`}
-					onClick={() => onPanelChange(activePanel === tool.id ? null : tool.id)}
-					title={tool.label}
-					style={{ '--tool-color': tool.color } as React.CSSProperties}
-				>
-					{tool.icon}
-					{tool.id === 'chat' && chatUnread > 0 && (
-						<span className="sidebar__badge">{chatUnread > 9 ? '9+' : chatUnread}</span>
-					)}
-				</button>
-			))}
+		<div className="pointer-events-none absolute right-3 top-1/2 z-[950] -translate-y-1/2 md:right-4">
+			<div className="pointer-events-auto flex flex-col gap-1.5 rounded-[22px] border border-border/70 bg-background/88 p-2 shadow-[0_8px_24px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+			{PANEL_TOOLS.map((tool) => {
+				const Icon = tool.icon
+				const isActive = !!visiblePanels[tool.id]
+
+				return (
+					<button
+						key={tool.id}
+						className={cn(
+							'group relative flex h-11 w-11 items-center justify-center rounded-2xl border border-transparent text-muted-foreground transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground',
+							isActive && 'border-border/80 bg-card text-foreground'
+						)}
+						onClick={() => onPanelChange(tool.id)}
+						title={tool.label}
+						style={
+							{
+								backgroundColor: isActive
+									? `color-mix(in srgb, ${tool.color} 10%, hsl(var(--card)) 90%)`
+									: undefined,
+							} as CSSProperties
+						}
+					>
+						<span
+							className="relative flex size-9 items-center justify-center rounded-xl"
+							style={{
+								background: `color-mix(in srgb, ${tool.color} 14%, transparent)`,
+								color: tool.color,
+							}}
+						>
+							<Icon size={18} strokeWidth={2} />
+							{tool.id === 'chat' && chatUnread > 0 ? (
+								<span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
+									{chatUnread > 9 ? '9+' : chatUnread}
+								</span>
+							) : null}
+						</span>
+						<span className="pointer-events-none absolute right-[calc(100%+0.75rem)] hidden whitespace-nowrap rounded-full border border-border/70 bg-background/95 px-2.5 py-1 text-xs font-medium text-foreground shadow-[0_4px_14px_rgba(15,23,42,0.05)] group-hover:block">
+							{tool.label}
+						</span>
+					</button>
+				)
+			})}
+			</div>
 		</div>
 	)
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { getWsUrl } from '../utils/network'
 
 export interface ChatMessage {
 	id: string
@@ -48,8 +49,7 @@ export function useChat(roomId: string, userId: string, userName: string, userCo
 	useEffect(() => {
 		if (!roomId || !userId) return
 
-		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-		const ws = new WebSocket(`${protocol}//${window.location.host}/api/chat/${roomId}`)
+		const ws = new WebSocket(getWsUrl(`/api/chat/${roomId}`))
 		wsRef.current = ws
 
 		ws.onopen = () => {

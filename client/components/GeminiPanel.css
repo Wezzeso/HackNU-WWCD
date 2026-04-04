@@ -40,7 +40,7 @@
 .gemini-panel__icon {
 	display: flex;
 	align-items: center;
-	background: linear-gradient(135deg, hsl(260, 80%, 55%), hsl(280, 70%, 50%));
+	background: hsl(260, 80%, 55%);
 	border-radius: 6px;
 	padding: 4px;
 }
@@ -139,7 +139,7 @@
 	height: 28px;
 	min-width: 28px;
 	border-radius: 8px;
-	background: linear-gradient(135deg, hsl(260, 80%, 55%), hsl(280, 70%, 50%));
+	background: hsl(260, 80%, 55%);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -160,7 +160,7 @@
 }
 
 .gemini-msg--user .gemini-msg__text {
-	background: linear-gradient(135deg, hsl(217, 80%, 50%), hsl(240, 70%, 55%));
+	background: hsl(217, 80%, 50%);
 	color: #fff;
 	border-radius: 14px 14px 4px 14px;
 }
@@ -201,7 +201,7 @@
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: linear-gradient(135deg, hsl(260, 80%, 55%), hsl(280, 70%, 50%));
+	background: hsl(260, 80%, 55%);
 	animation: typingBounce 1.4s ease-in-out infinite;
 }
 
@@ -241,7 +241,7 @@
 }
 
 .gemini-panel__send {
-	background: linear-gradient(135deg, hsl(260, 80%, 55%), hsl(280, 70%, 50%));
+	background: hsl(260, 80%, 55%);
 	border: none;
 	border-radius: 10px;
 	padding: 8px 12px;

@@ -1,0 +1,172 @@
+.tldraw-contextual-toolbar {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	padding-bottom: 6px;
+	pointer-events: auto;
+}
+
+.tldraw-contextual-toolbar__stylebar,
+.tldraw-contextual-toolbar__mainbar {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 14px;
+	border: 1px solid hsl(var(--border));
+	border-radius: 22px;
+	background: hsl(var(--card));
+	color: hsl(var(--foreground));
+	box-shadow: 0 18px 44px rgba(15, 23, 42, 0.14);
+	pointer-events: auto;
+}
+
+.tldraw-contextual-toolbar__stylebar {
+	flex-wrap: wrap;
+	justify-content: center;
+}
+
+.tldraw-contextual-toolbar__mainbar {
+	padding: 10px 16px;
+	border-radius: 24px;
+}
+
+.tldraw-contextual-toolbar__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.tldraw-contextual-toolbar__chip,
+.tldraw-contextual-toolbar__segment,
+.tldraw-contextual-toolbar__mainbutton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid transparent;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+	pointer-events: auto;
+}
+
+.tldraw-contextual-toolbar__chip {
+	gap: 8px;
+	height: 40px;
+	padding: 0 12px;
+	border-radius: 14px;
+	background: hsl(var(--accent));
+	color: hsl(var(--accent-foreground));
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.tldraw-contextual-toolbar__chip[data-active='true'] {
+	background: color-mix(in srgb, hsl(var(--accent)) 76%, white 24%);
+}
+
+.tldraw-contextual-toolbar__segment-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px;
+	border-radius: 16px;
+	background: hsl(var(--muted));
+}
+
+.tldraw-contextual-toolbar__segment {
+	min-width: 36px;
+	height: 36px;
+	padding: 0 10px;
+	border-radius: 12px;
+	font-size: 12px;
+	font-weight: 700;
+	color: hsl(var(--muted-foreground));
+}
+
+.tldraw-contextual-toolbar__segment:hover,
+.tldraw-contextual-toolbar__mainbutton:hover,
+.tldraw-contextual-toolbar__swatch:hover {
+	transform: translateY(-1px);
+}
+
+.tldraw-contextual-toolbar__segment[data-active='true'],
+.tldraw-contextual-toolbar__mainbutton[data-active='true'] {
+	border-color: color-mix(in srgb, hsl(var(--accent)) 52%, hsl(var(--border)) 48%);
+	background: color-mix(in srgb, hsl(var(--accent)) 16%, hsl(var(--card)) 84%);
+	color: hsl(var(--foreground));
+}
+
+.tldraw-contextual-toolbar__swatches {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px;
+	border-radius: 16px;
+	background: hsl(var(--muted));
+}
+
+.tldraw-contextual-toolbar__swatch {
+	width: 24px;
+	height: 24px;
+	border-radius: 999px;
+	border: 2px solid transparent;
+	background: var(--swatch-color);
+	cursor: pointer;
+	transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.tldraw-contextual-toolbar__swatch[data-active='true'] {
+	border-color: hsl(var(--card));
+	box-shadow: 0 0 0 2px hsl(var(--ring));
+}
+
+.tldraw-contextual-toolbar__fill {
+	display: inline-block;
+	width: 18px;
+	height: 18px;
+	border-radius: 6px;
+	border: 1.5px solid currentColor;
+}
+
+.tldraw-contextual-toolbar__fill--none {
+	background: transparent;
+}
+
+.tldraw-contextual-toolbar__fill--semi {
+	background: color-mix(in srgb, currentColor 28%, transparent 72%);
+}
+
+.tldraw-contextual-toolbar__fill--solid {
+	background: currentColor;
+}
+
+.tldraw-contextual-toolbar__mainbutton {
+	width: 44px;
+	height: 44px;
+	border-radius: 16px;
+	color: hsl(var(--muted-foreground));
+}
+
+.tldraw-contextual-toolbar__glyph {
+	font-size: 17px;
+	font-weight: 800;
+	line-height: 1;
+}
+
+@media (max-width: 820px) {
+	.tldraw-contextual-toolbar {
+		gap: 10px;
+		padding-inline: 12px;
+	}
+
+	.tldraw-contextual-toolbar__stylebar,
+	.tldraw-contextual-toolbar__mainbar {
+		flex-wrap: wrap;
+		justify-content: center;
+		max-width: none;
+	}
+}

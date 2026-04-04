@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { getWsUrl } from '../utils/network'
 
 export interface Track {
 	id: string
@@ -49,8 +50,7 @@ export function useMusicSync(roomId: string, userId: string, userName: string): 
 	useEffect(() => {
 		if (!roomId || !userId) return
 
-		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-		const ws = new WebSocket(`${protocol}//${window.location.host}/api/music/${roomId}`)
+		const ws = new WebSocket(getWsUrl(`/api/music/${roomId}`))
 		wsRef.current = ws
 
 		ws.onopen = () => {

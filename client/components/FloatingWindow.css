@@ -1,0 +1,160 @@
+.floating-window__header {
+	cursor: grab;
+	user-select: none;
+}
+
+.floating-window__header:active {
+	cursor: grabbing;
+}
+
+.floating-window__title-group {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.floating-window__action {
+	cursor: pointer;
+	transition: transform 0.18s ease, background-color 0.18s ease;
+}
+
+.floating-window__action:hover {
+	transform: translateY(-1px);
+}
+
+.floating-window__body {
+	background: transparent;
+}
+
+.floating-window__resize-handle {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	width: 24px;
+	height: 24px;
+	border: none;
+
+	cursor: nwse-resize;
+	opacity: 0.8;
+}
+
+.floating-window__body .chat-panel,
+.floating-window__body .video-panel,
+.floating-window__body .gemini-panel,
+.floating-window__body .music-player,
+.floating-window__body .calendar-widget,
+.floating-window__body .telegram-settings {
+	position: static;
+	inset: auto;
+	width: 100%;
+	height: 100%;
+	max-width: none;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	backdrop-filter: none;
+	box-shadow: none;
+	animation: none;
+	transform: none;
+	color: var(--text);
+}
+
+.floating-window__body .chat-panel *,
+.floating-window__body .video-panel *,
+.floating-window__body .gemini-panel *,
+.floating-window__body .music-player *,
+.floating-window__body .calendar-widget *,
+.floating-window__body .telegram-settings * {
+	color: inherit;
+}
+
+.floating-window__body .chat-panel__header,
+.floating-window__body .video-panel__header,
+.floating-window__body .gemini-panel__header,
+.floating-window__body .music-player__header,
+.floating-window__body .calendar-widget__header,
+.floating-window__body .telegram-settings__header {
+	display: none;
+}
+
+.floating-window__body .chat-panel__messages,
+.floating-window__body .gemini-panel__messages,
+.floating-window__body .calendar-widget__events,
+.floating-window__body .music-player__queue {
+	scrollbar-color: hsl(var(--border)) transparent;
+}
+
+.floating-window__body .chat-panel__messages::-webkit-scrollbar,
+.floating-window__body .gemini-panel__messages::-webkit-scrollbar,
+.floating-window__body .calendar-widget__events::-webkit-scrollbar,
+.floating-window__body .music-player__queue::-webkit-scrollbar {
+	width: 8px;
+}
+
+.floating-window__body .chat-panel__bubble,
+.floating-window__body .gemini-msg--assistant .gemini-msg__text,
+.floating-window__body .calendar-event,
+.floating-window__body .music-player__queue-item,
+.floating-window__body .telegram-settings__bot-card,
+.floating-window__body .video-tile,
+.floating-window__body .chat-message__reply-preview,
+.floating-window__body .music-control,
+.floating-window__body .calendar-widget__connect-btn,
+.floating-window__body .telegram-settings__check-btn,
+.floating-window__body .telegram-settings__share-btn,
+.floating-window__body .telegram-settings__export-btn,
+.floating-window__body .calendar-widget__refresh,
+.floating-window__body .calendar-widget__create-btn,
+.floating-window__body .gemini-panel__quick-action {
+	background: hsl(var(--muted) / 0.92);
+	border-color: hsl(var(--border));
+}
+
+.floating-window__body .chat-panel__input,
+.floating-window__body .gemini-panel__input,
+.floating-window__body .music-player__add-input,
+.floating-window__body .calendar-widget__create-form input,
+.floating-window__body .telegram-settings__input,
+.floating-window__body .telegram-settings__textarea {
+	background: hsl(var(--background) / 0.75);
+	border-color: hsl(var(--input));
+	color: hsl(var(--foreground));
+}
+
+.floating-window__body .chat-panel__send,
+.floating-window__body .gemini-panel__send,
+.floating-window__body .music-player__add-btn,
+.floating-window__body .video-panel__join-btn,
+.floating-window__body .calendar-widget__create-form button {
+	color: hsl(var(--primary-foreground));
+}
+
+.floating-window__body .chat-panel__online-count,
+.floating-window__body .chat-panel__typing,
+.floating-window__body .music-player__added-by,
+.floating-window__body .calendar-event__time,
+.floating-window__body .telegram-settings__bot-username,
+.floating-window__body .telegram-settings__setup p,
+.floating-window__body .gemini-panel__welcome p {
+	color: hsl(var(--muted-foreground));
+}
+
+.floating-window__body .chat-panel__status,
+.floating-window__body .music-player__connected,
+.floating-window__body .telegram-settings__bot-status,
+.floating-window__body .calendar-event__meet {
+	color: var(--floating-accent);
+}
+
+.floating-window__body .video-tile__name,
+.floating-window__body .video-tile__muted {
+	color: hsl(var(--foreground));
+}
+
+@media (max-width: 900px) {
+	.floating-window {
+		max-width: calc(100vw - 24px);
+		max-height: calc(100vh - 96px);
+	}
+}

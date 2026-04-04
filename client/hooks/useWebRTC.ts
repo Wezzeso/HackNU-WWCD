@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { getWsUrl } from '../utils/network'
 
 interface PeerConnection {
 	peerId: string
@@ -114,8 +115,7 @@ export function useWebRTC(roomId: string, peerId: string, userName: string): Use
 			setIsInCall(true)
 
 			// Connect to signaling server
-			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-			const ws = new WebSocket(`${protocol}//${window.location.host}/api/signal/${roomId}`)
+			const ws = new WebSocket(getWsUrl(`/api/signal/${roomId}`))
 			wsRef.current = ws
 
 			ws.onopen = () => {

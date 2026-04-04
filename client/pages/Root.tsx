@@ -1,8 +1,15 @@
 import { Navigate } from 'react-router-dom'
-import { uniqueId } from 'tldraw'
 import { getLocalStorageItem, setLocalStorageItem } from '../localStorage'
 
-const myLocalRoomId = getLocalStorageItem('my-local-room-id') ?? 'test-room-' + uniqueId()
+function createRoomId() {
+	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+		return `test-room-${crypto.randomUUID()}`
+	}
+
+	return `test-room-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+const myLocalRoomId = getLocalStorageItem('my-local-room-id') ?? createRoomId()
 setLocalStorageItem('my-local-room-id', myLocalRoomId)
 
 export function Root() {
