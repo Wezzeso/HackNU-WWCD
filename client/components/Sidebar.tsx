@@ -1,114 +1,168 @@
-import type { CSSProperties } from 'react'
-import type { LucideIcon } from 'lucide-react'
-import { Bot, CalendarDays, MessageSquare, Music4, Send, Video } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { FileStack, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { VoiceVideoPanel } from './VoiceVideoPanel'
+import { ModelSettings } from './ModelSettings'
+import type { AgentStatus } from '../hooks/useAgentSync'
+import './ModelSettings.css'
 
-export type PanelType = 'chat' | 'video' | 'gemini' | 'music' | 'calendar' | 'telegram' | null
-export type ToolPanel = Exclude<PanelType, null>
+const AGENT_COLOR = '#8b5cf6'
+const AGENT_NAME = 'AI Assistant'
 
 interface SidebarProps {
-	visiblePanels: Partial<Record<ToolPanel, boolean>>
-	onPanelChange: (panel: ToolPanel) => void
-	chatUnread: number
+	currentRoomId: string
+	userId: string
+	userName: string
+	userColor: string
+	activeUsers: Array<{ userId: string; userName: string; color: string }>
+	pages: Array<{ id: string; name: string }>
+	currentPageId: string | null
+	agentStatus?: AgentStatus
+	onSelectPage: (pageId: string) => void
+	onAddPage: () => void
+	onDeletePage: (pageId: string) => void
 }
 
-export const PANEL_TOOLS: Array<{
-	id: ToolPanel
-	label: string
-	description: string
-	color: string
-	icon: LucideIcon
-}> = [
-	{
-		id: 'chat',
-		label: 'Chat',
-		description: 'Messages and presence',
-		color: 'hsl(217, 80%, 50%)',
-		icon: MessageSquare,
-	},
-	{
-		id: 'video',
-		label: 'Video Call',
-		description: 'Camera and screen share',
-		color: 'hsl(142, 70%, 45%)',
-		icon: Video,
-	},
-	{
-		id: 'gemini',
-		label: 'Gemini AI',
-		description: 'Board-aware assistant',
-		color: 'hsl(260, 80%, 55%)',
-		icon: Bot,
-	},
-	{
-		id: 'music',
-		label: 'Music',
-		description: 'Shared soundtrack',
-		color: 'hsl(300, 70%, 50%)',
-		icon: Music4,
-	},
-	{
-		id: 'calendar',
-		label: 'Calendar',
-		description: 'Events and timing',
-		color: 'hsl(45, 90%, 50%)',
-		icon: CalendarDays,
-	},
-	{
-		id: 'telegram',
-		label: 'Telegram',
-		description: 'Share room updates',
-		color: 'hsl(199, 92%, 56%)',
-		icon: Send,
-	},
-]
+function getAgentStatusLabel(status: AgentStatus | undefined) {
+	switch (status) {
+		case 'listening': return 'Listening...'
+		case 'thinking': return 'Thinking...'
+		case 'generating': return 'Generating...'
+		default: return 'Online'
+	}
+}
 
-export function Sidebar({ visiblePanels, onPanelChange, chatUnread }: SidebarProps) {
+export function Sidebar({
+	currentRoomId,
+	userId,
+	userName,
+	userColor,
+	activeUsers,
+	pages,
+	currentPageId,
+	agentStatus,
+	onSelectPage,
+	onAddPage,
+	onDeletePage,
+}: SidebarProps) {
+	const [showModelSettings, setShowModelSettings] = useState(false)
+
 	return (
-		<div className="pointer-events-none absolute right-3 top-1/2 z-[950] -translate-y-1/2 md:right-4">
-			<div className="pointer-events-auto flex flex-col gap-1.5 rounded-[22px] border border-border/70 bg-background/88 p-2 shadow-[0_8px_24px_rgba(15,23,42,0.07)] backdrop-blur-xl">
-			{PANEL_TOOLS.map((tool) => {
-				const Icon = tool.icon
-				const isActive = !!visiblePanels[tool.id]
-
-				return (
-					<button
-						key={tool.id}
-						className={cn(
-							'group relative flex h-11 w-11 items-center justify-center rounded-2xl border border-transparent text-muted-foreground transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground',
-							isActive && 'border-border/80 bg-card text-foreground'
-						)}
-						onClick={() => onPanelChange(tool.id)}
-						title={tool.label}
-						style={
-							{
-								backgroundColor: isActive
-									? `color-mix(in srgb, ${tool.color} 10%, hsl(var(--card)) 90%)`
-									: undefined,
-							} as CSSProperties
-						}
+		<aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-[#fbfbfa] p-3">
+			<div className="rounded-xl bg-transparent p-2">
+				<div className="flex items-center gap-3">
+					<div
+						className="flex size-11 items-center justify-center rounded-full text-sm font-bold text-white"
+						style={{ background: userColor }}
 					>
-						<span
-							className="relative flex size-9 items-center justify-center rounded-xl"
-							style={{
-								background: `color-mix(in srgb, ${tool.color} 14%, transparent)`,
-								color: tool.color,
-							}}
-						>
-							<Icon size={18} strokeWidth={2} />
-							{tool.id === 'chat' && chatUnread > 0 ? (
-								<span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
-									{chatUnread > 9 ? '9+' : chatUnread}
-								</span>
-							) : null}
-						</span>
-						<span className="pointer-events-none absolute right-[calc(100%+0.75rem)] hidden whitespace-nowrap rounded-full border border-border/70 bg-background/95 px-2.5 py-1 text-xs font-medium text-foreground shadow-[0_4px_14px_rgba(15,23,42,0.05)] group-hover:block">
-							{tool.label}
-						</span>
+						{userName.charAt(0).toUpperCase()}
+					</div>
+					<div className="min-w-0 flex-1">
+						<div className="workspace-title truncate text-[15px] font-semibold text-foreground">{userName}</div>
+						<div className="text-xs text-muted-foreground">hacknu@workspace.so</div>
+					</div>
+					<button
+						type="button"
+						onClick={() => setShowModelSettings(true)}
+						className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-white hover:text-foreground"
+						aria-label="AI Model Settings"
+						title="AI Model Settings"
+					>
+						<Settings2 size={15} />
 					</button>
-				)
-			})}
+				</div>
 			</div>
-		</div>
+
+			{/* AI Agent Participant */}
+			<div className="mt-3 px-2">
+				<div className="flex items-center gap-2.5 rounded-lg bg-violet-50/80 px-3 py-2.5 ring-1 ring-violet-200/40">
+					<div
+						className="relative flex size-8 items-center justify-center rounded-full text-xs font-bold text-white"
+						style={{ background: AGENT_COLOR }}
+					>
+						<Sparkles size={14} />
+						<span
+							className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-white"
+							style={{
+								background: agentStatus === 'idle' ? '#22c55e' :
+									agentStatus === 'thinking' ? '#f59e0b' :
+									agentStatus === 'generating' ? '#3b82f6' : '#22c55e',
+							}}
+						/>
+					</div>
+					<div className="min-w-0 flex-1">
+						<div className="truncate text-[13px] font-semibold text-violet-900">{AGENT_NAME}</div>
+						<div className="text-[11px] text-violet-500">{getAgentStatusLabel(agentStatus)}</div>
+					</div>
+				</div>
+			</div>
+
+			<div className="mt-4 px-2">
+				<div className="mb-3 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+					<span>Voice Chat</span>
+					<span>{activeUsers.length} online</span>
+				</div>
+				<VoiceVideoPanel
+					roomId={currentRoomId}
+					userId={userId}
+					userName={userName}
+					userColor={userColor}
+				/>
+			</div>
+
+			<div className="mt-6 min-h-0 flex-1">
+				<div className="mb-2 flex items-center justify-between gap-2 px-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+					<span className="flex items-center gap-2">
+						<FileStack size={14} />
+						Pages
+					</span>
+					<button
+						type="button"
+						onClick={onAddPage}
+						className="flex size-6 items-center justify-center rounded-md border border-border/70 bg-white text-muted-foreground transition hover:text-foreground"
+						aria-label="Add page"
+						title="Add page"
+					>
+						<Plus size={14} />
+					</button>
+				</div>
+				<div className="space-y-2">
+					{pages.map((page) => (
+						<div
+							key={page.id}
+							className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition ${
+								currentPageId === page.id
+									? 'bg-white shadow-sm ring-1 ring-border/60'
+									: 'hover:bg-white/70'
+							}`}
+						>
+							<button
+								type="button"
+								onClick={() => onSelectPage(page.id)}
+								className={`min-w-0 flex-1 text-left ${
+									currentPageId === page.id ? 'font-medium text-foreground' : 'text-muted-foreground'
+								}`}
+							>
+								<span className="block truncate">{page.name}</span>
+							</button>
+							<button
+								type="button"
+								onClick={(event) => {
+									event.stopPropagation()
+									onDeletePage(page.id)
+								}}
+								disabled={pages.length <= 1}
+								className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+								aria-label={`Delete ${page.name}`}
+								title={pages.length <= 1 ? 'At least one page is required' : `Delete ${page.name}`}
+							>
+								<Trash2 size={13} />
+							</button>
+						</div>
+					))}
+				</div>
+			</div>
+
+			<ModelSettings isOpen={showModelSettings} onClose={() => setShowModelSettings(false)} />
+		</aside>
 	)
 }

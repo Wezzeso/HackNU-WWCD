@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws'
 import { TLSocketRoom } from '@tldraw/sync-core'
+import { reactionStampTLSchema } from '../../shared/tldraw/reactionStampSchema.js'
 
 // ─── TLSocketRoom based sync ───
 const rooms = new Map<string, TLSocketRoom<any, any>>()
@@ -9,6 +10,7 @@ function getOrCreateRoom(roomId: string): TLSocketRoom<any, any> {
 	if (!room) {
 		room = new TLSocketRoom({
 			clientTimeout: 60000,
+			schema: reactionStampTLSchema,
 			onSessionRemoved: (r, args) => {
 				console.log(`[tldraw] Client ${args.sessionId} left room ${roomId} (${args.numSessionsRemaining} clients remaining)`)
 				if (args.numSessionsRemaining === 0) {

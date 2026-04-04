@@ -8,12 +8,15 @@ import { setupTldrawSync } from './websocket/tldrawSync.js'
 import { setupChatSync } from './websocket/chatSync.js'
 import { setupMusicSync } from './websocket/musicSync.js'
 import { setupSignaling } from './websocket/signaling.js'
+import { setupAgentSync } from './websocket/agentSync.js'
 import { assetRoutes } from './routes/assets.js'
 import { geminiRoutes } from './routes/gemini.js'
 import { higgsFieldRoutes } from './routes/higgsfield.js'
 import { calendarRoutes } from './routes/calendar.js'
 import { telegramRoutes } from './routes/telegram.js'
 import { unfurlRoutes } from './routes/unfurl.js'
+import { livekitRoutes } from './routes/livekit.js'
+import { agentVoiceRoutes } from './routes/agentVoice.js'
 
 dotenv.config()
 
@@ -31,6 +34,8 @@ app.use('/api/ai/higgsfield', higgsFieldRoutes)
 app.use('/api/calendar', calendarRoutes)
 app.use('/api/telegram', telegramRoutes)
 app.use('/api/unfurl', unfurlRoutes)
+app.use('/api/livekit', livekitRoutes)
+app.use('/api/agent', agentVoiceRoutes)
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -69,6 +74,12 @@ server.on('upgrade', (request, socket, head) => {
 		wss.handleUpgrade(request, socket, head, (ws) => {
 			const roomId = pathname.split('/api/signal/')[1]
 			setupSignaling(ws, roomId)
+		})
+	} else if (pathname.startsWith('/api/agent-ws/')) {
+		// Agent sync
+		wss.handleUpgrade(request, socket, head, (ws) => {
+			const roomId = pathname.split('/api/agent-ws/')[1]
+			setupAgentSync(ws, roomId)
 		})
 	} else {
 		socket.destroy()

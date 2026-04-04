@@ -1,0 +1,114 @@
+.model-settings-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 9999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.3);
+	backdrop-filter: blur(4px);
+	animation: modelFadeIn 0.15s ease;
+}
+
+.model-settings {
+	width: 380px;
+	max-width: calc(100vw - 32px);
+	border: 1px solid rgba(148, 163, 184, 0.2);
+	border-radius: 16px;
+	background: #fff;
+	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.12);
+	animation: modelSlideIn 0.2s ease;
+}
+
+.model-settings__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.model-settings__header-left {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	color: #1e293b;
+}
+
+.model-settings__close {
+	border: 0;
+	background: transparent;
+	color: #94a3b8;
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.15s;
+}
+
+.model-settings__close:hover {
+	background: #f1f5f9;
+	color: #475569;
+}
+
+.model-settings__body {
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.model-settings__group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.model-settings__label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #64748b;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.model-settings__select {
+	border: 1px solid rgba(148, 163, 184, 0.25);
+	background: #fff;
+	border-radius: 8px;
+	padding: 10px 12px;
+	font-size: 13px;
+	color: #1e293b;
+	outline: none;
+	cursor: pointer;
+	transition: border-color 0.15s;
+}
+
+.model-settings__select:focus {
+	border-color: #111;
+	box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.06);
+}
+
+.model-settings__footer {
+	padding: 12px 20px;
+	border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.model-settings__hint {
+	font-size: 11px;
+	color: #94a3b8;
+}
+
+@keyframes modelFadeIn {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@keyframes modelSlideIn {
+	from { opacity: 0; transform: scale(0.96) translateY(8px); }
+	to { opacity: 1; transform: scale(1) translateY(0); }
+}

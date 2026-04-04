@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getWsUrl } from '../utils/network'
+import { resolveWsUrl } from '../utils/network'
 
 export interface ChatMessage {
 	id: string
@@ -43,90 +43,121 @@ export function useChat(roomId: string, userId: string, userName: string, userCo
 	const wsRef = useRef<WebSocket | null>(null)
 	const typingTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 	const isPanelOpenRef = useRef(isPanelOpen)
+	const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const reconnectAttemptRef = useRef(0)
+	const shouldReconnectRef = useRef(true)
 
 	isPanelOpenRef.current = isPanelOpen
 
 	useEffect(() => {
 		if (!roomId || !userId) return
 
-		const ws = new WebSocket(getWsUrl(`/api/chat/${roomId}`))
-		wsRef.current = ws
+		shouldReconnectRef.current = true
 
-		ws.onopen = () => {
-			setIsConnected(true)
-			ws.send(JSON.stringify({ type: 'join', userId, userName, userColor }))
+		const scheduleReconnect = () => {
+			if (!shouldReconnectRef.current || reconnectTimerRef.current) return
+
+			const timeout = Math.min(1000 * 2 ** reconnectAttemptRef.current, 5000)
+			reconnectTimerRef.current = setTimeout(() => {
+				reconnectTimerRef.current = null
+				reconnectAttemptRef.current += 1
+				connect()
+			}, timeout)
 		}
 
-		ws.onmessage = (event) => {
-			const msg = JSON.parse(event.data)
+		const connect = () => {
+			void (async () => {
+				const url = await resolveWsUrl(`/api/chat/${roomId}`)
+				if (!shouldReconnectRef.current) return
 
-			switch (msg.type) {
-				case 'history':
-					setMessages(msg.messages)
-					setOnlineUsers(msg.onlineUsers)
-					break
+				const ws = new WebSocket(url)
+				wsRef.current = ws
 
-				case 'message':
-					setMessages(prev => [...prev, msg.message])
-					if (!isPanelOpenRef.current) {
-						setUnreadCount(prev => prev + 1)
-					}
-					break
-
-				case 'user-joined':
-					setOnlineUsers(prev => [...prev.filter(u => u.id !== msg.userId), {
-						id: msg.userId,
-						name: msg.userName,
-						color: msg.userColor,
-					}])
-					break
-
-				case 'user-left':
-					setOnlineUsers(prev => prev.filter(u => u.id !== msg.userId))
-					break
-
-				case 'typing': {
-					setTypingUsers(prev => {
-						if (!prev.includes(msg.userName)) return [...prev, msg.userName]
-						return prev
-					})
-					// Clear typing after 3 seconds
-					const existing = typingTimeoutsRef.current.get(msg.userId)
-					if (existing) clearTimeout(existing)
-					typingTimeoutsRef.current.set(msg.userId, setTimeout(() => {
-						setTypingUsers(prev => prev.filter(u => u !== msg.userName))
-					}, 3000))
-					break
+				ws.onopen = () => {
+					reconnectAttemptRef.current = 0
+					setIsConnected(true)
+					ws.send(JSON.stringify({ type: 'join', userId, userName, userColor }))
 				}
 
-				case 'reaction':
-					setMessages(prev => prev.map(m =>
-						m.id === msg.messageId ? { ...m, reactions: msg.reactions } : m
-					))
-					break
+				ws.onmessage = (event) => {
+					const msg = JSON.parse(event.data)
 
-				case 'edit':
-					setMessages(prev => prev.map(m =>
-						m.id === msg.messageId ? { ...m, text: msg.text, edited: true } : m
-					))
-					break
+					switch (msg.type) {
+						case 'history':
+							setMessages(msg.messages)
+							setOnlineUsers(msg.onlineUsers)
+							break
 
-				case 'delete':
-					setMessages(prev => prev.filter(m => m.id !== msg.messageId))
-					break
-			}
+						case 'message':
+							setMessages(prev => [...prev, msg.message])
+							if (!isPanelOpenRef.current) {
+								setUnreadCount(prev => prev + 1)
+							}
+							break
+
+						case 'user-joined':
+							setOnlineUsers(prev => [...prev.filter(u => u.id !== msg.userId), {
+								id: msg.userId,
+								name: msg.userName,
+								color: msg.userColor,
+							}])
+							break
+
+						case 'user-left':
+							setOnlineUsers(prev => prev.filter(u => u.id !== msg.userId))
+							break
+
+						case 'typing': {
+							setTypingUsers(prev => {
+								if (!prev.includes(msg.userName)) return [...prev, msg.userName]
+								return prev
+							})
+							const existing = typingTimeoutsRef.current.get(msg.userId)
+							if (existing) clearTimeout(existing)
+							typingTimeoutsRef.current.set(msg.userId, setTimeout(() => {
+								setTypingUsers(prev => prev.filter(u => u !== msg.userName))
+							}, 3000))
+							break
+						}
+
+						case 'reaction':
+							setMessages(prev => prev.map(m =>
+								m.id === msg.messageId ? { ...m, reactions: msg.reactions } : m
+							))
+							break
+
+						case 'edit':
+							setMessages(prev => prev.map(m =>
+								m.id === msg.messageId ? { ...m, text: msg.text, edited: true } : m
+							))
+							break
+
+						case 'delete':
+							setMessages(prev => prev.filter(m => m.id !== msg.messageId))
+							break
+					}
+				}
+
+				ws.onclose = () => {
+					setIsConnected(false)
+					scheduleReconnect()
+				}
+
+				ws.onerror = () => {
+					setIsConnected(false)
+				}
+			})()
 		}
 
-		ws.onclose = () => {
-			setIsConnected(false)
-		}
-
-		ws.onerror = () => {
-			setIsConnected(false)
-		}
+		connect()
 
 		return () => {
-			ws.close()
+			shouldReconnectRef.current = false
+			if (reconnectTimerRef.current) {
+				clearTimeout(reconnectTimerRef.current)
+				reconnectTimerRef.current = null
+			}
+			wsRef.current?.close()
 			typingTimeoutsRef.current.forEach(t => clearTimeout(t))
 		}
 	}, [roomId, userId, userName, userColor])

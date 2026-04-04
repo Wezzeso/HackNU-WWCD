@@ -13,28 +13,38 @@ import {
 	useEditor,
 	useValue,
 } from 'tldraw'
-import type { CSSProperties, ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import {
 	ArrowRight,
 	Brush,
-	Check,
 	Circle,
 	Cloud,
 	Diamond,
 	Hand,
+	Heart,
 	MousePointer2,
 	Shapes,
+	Sparkles,
 	Square,
 	Stamp,
 	Star,
 	StickyNote,
+	ThumbsDown,
+	ThumbsUp,
 	Triangle,
 } from 'lucide-react'
+import { expandDocument } from '../utils/canvasAI'
+import {
+	REACTION_STAMP_DEFS,
+	STAMP_TOOL_ID,
+	getCurrentStampReaction,
+	setCurrentStampReaction,
+	type StampReaction,
+} from '../tldraw/stamps'
 import './TldrawContextualToolbar.css'
 
 type ToolMode = 'select' | 'hand' | 'arrow' | 'shapes' | 'brush' | 'stickers' | 'stamps'
 type ShapeGeo = 'rectangle' | 'ellipse' | 'diamond' | 'triangle' | 'star' | 'cloud'
-type StampGeo = 'star' | 'heart' | 'cloud' | 'check-box' | 'x-box'
 type ColorName =
 	| 'black'
 	| 'grey'
@@ -51,7 +61,6 @@ type ArrowKindName = 'straight' | 'arc' | 'elbow'
 type ArrowheadName = 'none' | 'arrow' | 'triangle' | 'dot'
 
 const SHAPE_GEOS: ShapeGeo[] = ['rectangle', 'ellipse', 'diamond', 'triangle', 'star', 'cloud']
-const STAMP_GEOS: StampGeo[] = ['star', 'heart', 'cloud', 'check-box', 'x-box']
 const COLORS: Array<{ value: ColorName; hex: string }> = [
 	{ value: 'black', hex: '#1f2937' },
 	{ value: 'grey', hex: '#9aa4b2' },
@@ -86,7 +95,7 @@ const ARROWHEADS: Array<{ value: ArrowheadName; label: string }> = [
 	{ value: 'dot', label: 'Dot' },
 ]
 
-function geoIcon(geo: ShapeGeo | StampGeo) {
+function geoIcon(geo: ShapeGeo) {
 	switch (geo) {
 		case 'rectangle':
 			return <Square size={16} />
@@ -100,12 +109,6 @@ function geoIcon(geo: ShapeGeo | StampGeo) {
 			return <Star size={16} />
 		case 'cloud':
 			return <Cloud size={16} />
-		case 'check-box':
-			return <Check size={16} />
-		case 'x-box':
-			return <span className="tldraw-contextual-toolbar__glyph">×</span>
-		case 'heart':
-			return <span className="tldraw-contextual-toolbar__glyph">♥</span>
 	}
 }
 
@@ -113,15 +116,30 @@ function titleCaseSize(size: SizeName) {
 	return size.toUpperCase()
 }
 
+function reactionIcon(reaction: StampReaction) {
+	switch (reaction) {
+		case 'like':
+			return <ThumbsUp size={16} />
+		case 'love':
+			return <Heart size={16} />
+		case 'hate':
+			return <ThumbsDown size={16} />
+	}
+}
+
 export function TldrawContextualToolbar() {
 	const editor = useEditor()
+	const [currentStampReaction, setStampReaction] = useState<StampReaction>(() =>
+		getCurrentStampReaction(editor)
+	)
+	const [isExpanding, setIsExpanding] = useState(false)
 
 	const currentToolId = useValue('current tool id', () => editor.getCurrentToolId(), [editor])
 	const currentGeo = useValue(
 		'current geo',
 		() => editor.getSharedStyles().getAsKnownValue(GeoShapeGeoStyle) ?? 'rectangle',
 		[editor]
-	) as ShapeGeo | StampGeo
+	) as ShapeGeo
 	const currentColor = useValue(
 		'current color',
 		() => (editor.getSharedStyles().getAsKnownValue(DefaultColorStyle) ?? 'black') as ColorName,
@@ -156,8 +174,16 @@ export function TldrawContextualToolbar() {
 		[editor]
 	)
 
+	useEffect(() => {
+		setStampReaction(getCurrentStampReaction(editor))
+	}, [editor])
+
 	const activeMode: ToolMode =
-		currentToolId === 'select' || currentToolId === 'hand' || currentToolId === 'arrow' || currentToolId === 'draw' || currentToolId === 'note'
+		currentToolId === 'select' ||
+		currentToolId === 'hand' ||
+		currentToolId === 'arrow' ||
+		currentToolId === 'draw' ||
+		currentToolId === 'note'
 			? ({
 					select: 'select',
 					hand: 'hand',
@@ -165,11 +191,11 @@ export function TldrawContextualToolbar() {
 					draw: 'brush',
 					note: 'stickers',
 				}[currentToolId] as ToolMode)
-			: currentToolId === 'geo'
-				? STAMP_GEOS.includes(currentGeo as StampGeo)
-					? 'stamps'
-					: 'shapes'
-				: 'select'
+			: currentToolId === STAMP_TOOL_ID
+				? 'stamps'
+				: currentToolId === 'geo'
+					? 'shapes'
+					: 'select'
 
 	const applyStyle = <T,>(style: StyleProp<T>, value: T) => {
 		editor.run(() => {
@@ -200,28 +226,83 @@ export function TldrawContextualToolbar() {
 				break
 			case 'shapes':
 				editor.run(() => {
-					const nextGeo = SHAPE_GEOS.includes(currentGeo as ShapeGeo)
-						? (currentGeo as ShapeGeo)
-						: 'rectangle'
+					const nextGeo = SHAPE_GEOS.includes(currentGeo) ? currentGeo : 'rectangle'
 					editor.setStyleForNextShapes(GeoShapeGeoStyle, nextGeo)
 					editor.setCurrentTool('geo')
 				})
 				break
 			case 'stamps':
-				editor.run(() => {
-					const nextGeo = STAMP_GEOS.includes(currentGeo as StampGeo)
-						? (currentGeo as StampGeo)
-						: 'star'
-					editor.setStyleForNextShapes(GeoShapeGeoStyle, nextGeo)
-					editor.setCurrentTool('geo')
-				})
+				editor.setCurrentTool(STAMP_TOOL_ID)
 				break
 		}
 	}
 
-	const pickGeo = (geo: ShapeGeo | StampGeo) => {
+	const pickGeo = (geo: ShapeGeo) => {
 		applyStyle(GeoShapeGeoStyle, geo)
 		editor.setCurrentTool('geo')
+	}
+
+	const pickStampReaction = (reaction: StampReaction) => {
+		setCurrentStampReaction(editor, reaction)
+		setStampReaction(reaction)
+		editor.setCurrentTool(STAMP_TOOL_ID)
+	}
+
+	// Check if selected shapes have short text content suitable for expansion
+	const selectedShapes = useValue(
+		'selected shapes',
+		() => editor.getSelectedShapes(),
+		[editor]
+	)
+
+	const expandableText = (() => {
+		if (activeMode !== 'select' || selectedShapes.length !== 1) return null
+		const shape = selectedShapes[0]
+		const shapeType = shape.type
+
+		let text = ''
+		if (shapeType === 'note' && 'text' in shape.props) {
+			text = (shape.props as any).text || ''
+		} else if (shapeType === 'text' && 'text' in shape.props) {
+			text = (shape.props as any).text || ''
+		} else if (shapeType === 'geo' && 'text' in shape.props) {
+			text = (shape.props as any).text || ''
+		}
+
+		if (text.trim().length > 10 && text.trim().length < 300) {
+			return text.trim()
+		}
+		return null
+	})()
+
+	const handleExpandWithAI = async () => {
+		if (!expandableText || isExpanding) return
+
+		setIsExpanding(true)
+		try {
+			const expanded = await expandDocument(expandableText)
+			if (expanded) {
+				const selectedShape = editor.getSelectedShapes()[0]
+				if (!selectedShape) return
+
+				// Create a new note shape next to the selected one with the expanded text
+				const bounds = editor.getShapePageBounds(selectedShape)
+				if (!bounds) return
+
+				editor.createShape({
+					type: 'note',
+					x: bounds.maxX + 40,
+					y: bounds.y,
+					props: {
+						text: expanded,
+					},
+				} as any)
+			}
+		} catch (err) {
+			console.error('[canvasAI] expand failed:', err)
+		} finally {
+			setIsExpanding(false)
+		}
 	}
 
 	return (
@@ -240,7 +321,13 @@ export function TldrawContextualToolbar() {
 											onClick={() => applyStyle(DefaultDashStyle, dash.value)}
 											title={dash.label}
 										>
-											{dash.value === 'draw' ? '∿' : dash.value === 'dashed' ? '– –' : dash.value === 'dotted' ? '···' : '—'}
+											{dash.value === 'draw'
+												? '∿'
+												: dash.value === 'dashed'
+													? '– –'
+													: dash.value === 'dotted'
+														? '···'
+														: '—'}
 										</SegmentButton>
 									))}
 								</SegmentGroup>
@@ -305,15 +392,19 @@ export function TldrawContextualToolbar() {
 						{activeMode === 'stamps' ? (
 							<>
 								<ToolChip icon={<Stamp size={16} />} label="Stamps" active />
-								<SegmentGroup label="Stamp presets">
-									{STAMP_GEOS.map((geo) => (
+								<ToolChip
+									icon={<span className="tldraw-contextual-toolbar__glyph">+</span>}
+									label="Click board to vote"
+								/>
+								<SegmentGroup label="Reaction presets">
+									{REACTION_STAMP_DEFS.map((reaction) => (
 										<SegmentButton
-											key={geo}
-											active={currentGeo === geo}
-											onClick={() => pickGeo(geo)}
-											title={geo}
+											key={reaction.id}
+											active={currentStampReaction === reaction.id}
+											onClick={() => pickStampReaction(reaction.id)}
+											title={reaction.label}
 										>
-											{geoIcon(geo)}
+											{reactionIcon(reaction.id)}
 										</SegmentButton>
 									))}
 								</SegmentGroup>
@@ -321,51 +412,70 @@ export function TldrawContextualToolbar() {
 						) : null}
 					</div>
 
-					<div className="tldraw-contextual-toolbar__group">
-						<div className="tldraw-contextual-toolbar__swatches">
-							{COLORS.map((color) => (
-								<button
-									key={color.value}
-									type="button"
-									className="tldraw-contextual-toolbar__swatch"
-									data-active={currentColor === color.value}
-									style={{ '--swatch-color': color.hex } as CSSProperties}
-									onClick={() => applyStyle(DefaultColorStyle, color.value)}
-									title={color.value}
-								/>
-							))}
-						</div>
+					{activeMode !== 'stamps' ? (
+						<div className="tldraw-contextual-toolbar__group">
+							<div className="tldraw-contextual-toolbar__swatches">
+								{COLORS.map((color) => (
+									<button
+										key={color.value}
+										type="button"
+										className="tldraw-contextual-toolbar__swatch"
+										data-active={currentColor === color.value}
+										style={{ '--swatch-color': color.hex } as CSSProperties}
+										onClick={() => applyStyle(DefaultColorStyle, color.value)}
+										title={color.value}
+									/>
+								))}
+							</div>
 
-						{activeMode === 'shapes' || activeMode === 'stickers' || activeMode === 'stamps' ? (
-							<SegmentGroup label="Fill styles">
-								{FILLS.map((fill) => (
+							{activeMode === 'shapes' || activeMode === 'stickers' ? (
+								<SegmentGroup label="Fill styles">
+									{FILLS.map((fill) => (
+										<SegmentButton
+											key={fill.value}
+											active={currentFill === fill.value}
+											onClick={() => applyStyle(DefaultFillStyle, fill.value)}
+											title={fill.label}
+										>
+											<span
+												className={`tldraw-contextual-toolbar__fill tldraw-contextual-toolbar__fill--${fill.value}`}
+											/>
+										</SegmentButton>
+									))}
+								</SegmentGroup>
+							) : null}
+
+							<SegmentGroup label="Stroke sizes">
+								{SIZES.map((size) => (
 									<SegmentButton
-										key={fill.value}
-										active={currentFill === fill.value}
-										onClick={() => applyStyle(DefaultFillStyle, fill.value)}
-										title={fill.label}
+										key={size}
+										active={currentSize === size}
+										onClick={() => applyStyle(DefaultSizeStyle, size)}
+										title={size}
 									>
-										<span className={`tldraw-contextual-toolbar__fill tldraw-contextual-toolbar__fill--${fill.value}`} />
+										{titleCaseSize(size)}
 									</SegmentButton>
 								))}
 							</SegmentGroup>
-						) : null}
-
-						<SegmentGroup label="Stroke sizes">
-							{SIZES.map((size) => (
-								<SegmentButton
-									key={size}
-									active={currentSize === size}
-									onClick={() => applyStyle(DefaultSizeStyle, size)}
-									title={size}
-								>
-									{titleCaseSize(size)}
-								</SegmentButton>
-							))}
-						</SegmentGroup>
-					</div>
+						</div>
+					) : null}
 				</div>
 			) : null}
+
+			{/* Expand with AI button for select mode with short text */}
+			{activeMode === 'select' && expandableText && (
+				<div className="tldraw-contextual-toolbar__stylebar">
+					<button
+						className="tldraw-contextual-toolbar__expand-btn"
+						onClick={handleExpandWithAI}
+						disabled={isExpanding}
+						title="Expand short text into a full document using AI"
+					>
+						<Sparkles size={14} />
+						{isExpanding ? 'Expanding...' : 'Expand with AI'}
+					</button>
+				</div>
+			)}
 
 			<TldrawUiToolbar
 				className="tldraw-contextual-toolbar__mainbar"

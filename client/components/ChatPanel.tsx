@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage } from '../hooks/useChat'
+import type { AgentSuggestion, AgentMessage, AgentStatus } from '../hooks/useAgentSync'
+import { useImageGeneration } from '../hooks/useImageGeneration'
 import './ChatPanel.css'
 
 interface ChatPanelProps {
@@ -9,16 +11,40 @@ interface ChatPanelProps {
 	userColor: string
 	isOpen: boolean
 	onClose: () => void
+	agentSuggestions?: AgentSuggestion[]
+	agentMessages?: AgentMessage[]
+	agentStatus?: AgentStatus
+	onApproveSuggestion?: (id: string) => void
+	onDismissSuggestion?: (id: string) => void
+	onAddCalendarEvent?: (data: Record<string, unknown>) => void
+	onPlaceImageOnCanvas?: (imageUrl: string) => void
 }
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '🎉', '🤔', '👀']
 
-export function ChatPanel({ roomId, userId, userName, userColor, isOpen, onClose }: ChatPanelProps) {
+type TimelineItem =
+	| { kind: 'chat'; data: ChatMessage; ts: number }
+	| { kind: 'suggestion'; data: AgentSuggestion; ts: number }
+	| { kind: 'agent-message'; data: AgentMessage; ts: number }
+
+export function ChatPanel({
+	roomId, userId, userName, userColor,
+	isOpen, onClose,
+	agentSuggestions = [],
+	agentMessages = [],
+	agentStatus,
+	onApproveSuggestion,
+	onDismissSuggestion,
+	onAddCalendarEvent,
+	onPlaceImageOnCanvas,
+}: ChatPanelProps) {
 	const {
-		messages, onlineUsers, typingUsers,
+		messages, typingUsers,
 		sendMessage, addReaction, sendTyping,
 		isConnected, unreadCount, resetUnread,
 	} = useChat(roomId, userId, userName, userColor, isOpen)
+
+	const { isGenerating, imageUrl, generateImage, reset: resetImage } = useImageGeneration()
 
 	const [input, setInput] = useState('')
 	const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
@@ -35,7 +61,7 @@ export function ChatPanel({ roomId, userId, userName, userColor, isOpen, onClose
 
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-	}, [messages])
+	}, [messages, agentSuggestions, agentMessages])
 
 	const handleSend = () => {
 		if (!input.trim()) return
@@ -63,46 +89,33 @@ export function ChatPanel({ roomId, userId, userName, userColor, isOpen, onClose
 
 	const findReplyMessage = (id: string) => messages.find(m => m.id === id)
 
+	const handleApprove = async (suggestion: AgentSuggestion) => {
+		onApproveSuggestion?.(suggestion.id)
+
+		if (suggestion.type === 'calendar' && suggestion.data) {
+			onAddCalendarEvent?.(suggestion.data)
+		}
+
+		if (suggestion.type === 'image' && suggestion.data?.prompt) {
+			const url = await generateImage(suggestion.data.prompt as string)
+			if (url) {
+				// Image generated successfully
+			}
+		}
+	}
+
+	// Merge all items into a timeline
+	const pendingSuggestions = agentSuggestions.filter(s => s.status === 'pending')
+
+	const timeline: TimelineItem[] = [
+		...messages.map(m => ({ kind: 'chat' as const, data: m, ts: m.timestamp })),
+		...agentMessages.map(m => ({ kind: 'agent-message' as const, data: m, ts: m.timestamp })),
+	].sort((a, b) => a.ts - b.ts)
+
 	return (
 		<div className={`chat-panel ${isOpen ? 'chat-panel--open' : ''}`}>
-			<div className="chat-panel__header">
-				<div className="chat-panel__header-left">
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-					</svg>
-					<span>Chat</span>
-					<span className={`chat-panel__status ${isConnected ? 'chat-panel__status--connected' : ''}`}>
-						{isConnected ? 'Online' : 'Offline'}
-					</span>
-				</div>
-				<div className="chat-panel__header-right">
-					<div className="chat-panel__online-count">
-						<span className="chat-panel__online-dot" />
-						{onlineUsers.length}
-					</div>
-					<button className="chat-panel__close" onClick={onClose} aria-label="Close chat">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-							<path d="M18 6L6 18M6 6l12 12" />
-						</svg>
-					</button>
-				</div>
-			</div>
-
-			<div className="chat-panel__online-bar">
-				{onlineUsers.map(user => (
-					<div
-						key={user.id}
-						className="chat-panel__user-avatar"
-						style={{ background: user.color }}
-						title={user.name}
-					>
-						{user.name.charAt(0).toUpperCase()}
-					</div>
-				))}
-			</div>
-
 			<div className="chat-panel__messages">
-				{messages.length === 0 && (
+				{timeline.length === 0 && pendingSuggestions.length === 0 && (
 					<div className="chat-panel__empty">
 						<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.3">
 							<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -112,7 +125,28 @@ export function ChatPanel({ roomId, userId, userName, userColor, isOpen, onClose
 					</div>
 				)}
 
-				{messages.map((msg) => {
+				{timeline.map((item) => {
+					if (item.kind === 'agent-message') {
+						const msg = item.data
+						return (
+							<div key={msg.id} className="chat-message chat-message--agent">
+								<div className="chat-message__avatar chat-message__avatar--agent">
+									✨
+								</div>
+								<div className="chat-message__content">
+									<div className="chat-message__name" style={{ color: '#8b5cf6' }}>
+										AI Assistant
+									</div>
+									<div className="chat-message__bubble chat-message__bubble--agent">
+										<span>{msg.text}</span>
+										<span className="chat-message__time">{formatTime(msg.timestamp)}</span>
+									</div>
+								</div>
+							</div>
+						)
+					}
+
+					const msg = item.data as ChatMessage
 					const isOwn = msg.userId === userId
 					const replyMsg = msg.replyTo ? findReplyMessage(msg.replyTo) : null
 
@@ -180,6 +214,94 @@ export function ChatPanel({ roomId, userId, userName, userColor, isOpen, onClose
 						</div>
 					)
 				})}
+
+				{/* AI Suggestion Cards */}
+				{pendingSuggestions.map((suggestion) => (
+					<div key={suggestion.id} className="chat-suggestion">
+						<div className="chat-suggestion__header">
+							<span className="chat-suggestion__icon">
+								{suggestion.type === 'calendar' ? '📅' :
+									suggestion.type === 'image' ? '🖼️' :
+									suggestion.type === 'video' ? '🎬' :
+									suggestion.type === 'expand' ? '📄' :
+									suggestion.type === 'summary' ? '📋' : '💡'}
+							</span>
+							<span className="chat-suggestion__badge">AI Suggestion</span>
+						</div>
+						<div className="chat-suggestion__title">{suggestion.title}</div>
+						<div className="chat-suggestion__desc">{suggestion.description}</div>
+						{suggestion.data && suggestion.type === 'calendar' && (
+							<div className="chat-suggestion__meta">
+								{typeof suggestion.data.date === 'string' && <span>📅 {suggestion.data.date}</span>}
+								{typeof suggestion.data.time === 'string' && <span>🕐 {suggestion.data.time}</span>}
+							</div>
+						)}
+						<div className="chat-suggestion__actions">
+							<button
+								className="chat-suggestion__approve"
+								onClick={() => handleApprove(suggestion)}
+								disabled={isGenerating}
+							>
+								{isGenerating && suggestion.type === 'image' ? 'Generating...' : '✓ Approve'}
+							</button>
+							<button
+								className="chat-suggestion__dismiss"
+								onClick={() => onDismissSuggestion?.(suggestion.id)}
+							>
+								✗ Dismiss
+							</button>
+						</div>
+					</div>
+				))}
+
+				{/* Image generation result */}
+				{imageUrl && (
+					<div className="chat-suggestion chat-suggestion--result">
+						<div className="chat-suggestion__header">
+							<span className="chat-suggestion__icon">🖼️</span>
+							<span className="chat-suggestion__badge">Generated Image</span>
+						</div>
+						<img
+							src={imageUrl}
+							alt="AI generated"
+							className="chat-suggestion__image"
+							loading="lazy"
+						/>
+						<div className="chat-suggestion__actions">
+							<button
+								className="chat-suggestion__approve"
+								onClick={() => {
+									onPlaceImageOnCanvas?.(imageUrl)
+									resetImage()
+								}}
+							>
+								📌 Place on Canvas
+							</button>
+							<button
+								className="chat-suggestion__dismiss"
+								onClick={resetImage}
+							>
+								Dismiss
+							</button>
+						</div>
+					</div>
+				)}
+
+				{/* Agent thinking indicator */}
+				{agentStatus === 'thinking' && (
+					<div className="chat-message chat-message--agent">
+						<div className="chat-message__avatar chat-message__avatar--agent">✨</div>
+						<div className="chat-message__content">
+							<div className="chat-message__name" style={{ color: '#8b5cf6' }}>AI Assistant</div>
+							<div className="chat-message__bubble chat-message__bubble--agent">
+								<div className="chat-panel__typing-dots">
+									<span /><span /><span />
+								</div>
+							</div>
+						</div>
+					</div>
+				)}
+
 				<div ref={messagesEndRef} />
 			</div>
 

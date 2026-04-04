@@ -10,12 +10,15 @@ router.post('/', async (req, res) => {
 		}
 
 		const { prompt, context, stream: useStream } = req.body
+		const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview'
 
-		const systemPrompt = `You are an AI assistant integrated into a collaborative whiteboard/FigJam-style platform. 
+		const systemPrompt = `You are an AI assistant that is a participant in a collaborative whiteboard room. 
+You are a team member — not a tool, but a collaborator. Be friendly, proactive, and helpful.
 You help teams brainstorm, organize ideas, summarize discussions, and create action items.
 When given board context, analyze the current state of the whiteboard and provide insights.
 Be concise, creative, and actionable in your responses.
-Format responses with markdown when helpful.`
+Format responses with markdown when helpful.
+Keep responses brief unless asked for detail.`
 
 		const body = {
 			contents: [
@@ -38,7 +41,7 @@ Format responses with markdown when helpful.`
 		if (useStream) {
 			// Streaming response
 			const response = await fetch(
-				`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
+				`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -73,7 +76,7 @@ Format responses with markdown when helpful.`
 		} else {
 			// Non-streaming response
 			const response = await fetch(
-				`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+				`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },

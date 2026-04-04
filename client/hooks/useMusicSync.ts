@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getWsUrl } from '../utils/network'
+import { resolveWsUrl } from '../utils/network'
 
 export interface Track {
 	id: string
@@ -46,71 +46,105 @@ export function useMusicSync(roomId: string, userId: string, userName: string): 
 	})
 	const [isConnected, setIsConnected] = useState(false)
 	const wsRef = useRef<WebSocket | null>(null)
+	const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const reconnectAttemptRef = useRef(0)
+	const shouldReconnectRef = useRef(true)
 
 	useEffect(() => {
 		if (!roomId || !userId) return
 
-		const ws = new WebSocket(getWsUrl(`/api/music/${roomId}`))
-		wsRef.current = ws
+		shouldReconnectRef.current = true
 
-		ws.onopen = () => {
-			setIsConnected(true)
-			ws.send(JSON.stringify({ type: 'join', userId, userName }))
+		const scheduleReconnect = () => {
+			if (!shouldReconnectRef.current || reconnectTimerRef.current) return
+
+			const timeout = Math.min(1000 * 2 ** reconnectAttemptRef.current, 5000)
+			reconnectTimerRef.current = setTimeout(() => {
+				reconnectTimerRef.current = null
+				reconnectAttemptRef.current += 1
+				connect()
+			}, timeout)
 		}
 
-		ws.onmessage = (event) => {
-			const msg = JSON.parse(event.data)
+		const connect = () => {
+			void (async () => {
+				const url = await resolveWsUrl(`/api/music/${roomId}`)
+				if (!shouldReconnectRef.current) return
 
-			switch (msg.type) {
-				case 'state':
-					setState({
-						currentTrack: msg.currentTrack,
-						queue: msg.queue,
-						isPlaying: msg.isPlaying,
-						position: msg.position,
-						lastSync: msg.lastSync,
-						volume: msg.volume,
-						skipVotes: msg.skipVotes,
-						totalUsers: msg.totalUsers,
-					})
-					break
+				const ws = new WebSocket(url)
+				wsRef.current = ws
 
-				case 'play-pause':
-					setState(prev => ({
-						...prev,
-						isPlaying: msg.isPlaying,
-						position: msg.position,
-						lastSync: msg.lastSync,
-					}))
-					break
+				ws.onopen = () => {
+					reconnectAttemptRef.current = 0
+					setIsConnected(true)
+					ws.send(JSON.stringify({ type: 'join', userId, userName }))
+				}
 
-				case 'seek':
-					setState(prev => ({
-						...prev,
-						position: msg.position,
-						lastSync: msg.lastSync,
-					}))
-					break
+				ws.onmessage = (event) => {
+					const msg = JSON.parse(event.data)
 
-				case 'volume':
-					setState(prev => ({ ...prev, volume: msg.volume }))
-					break
+					switch (msg.type) {
+						case 'state':
+							setState({
+								currentTrack: msg.currentTrack,
+								queue: msg.queue,
+								isPlaying: msg.isPlaying,
+								position: msg.position,
+								lastSync: msg.lastSync,
+								volume: msg.volume,
+								skipVotes: msg.skipVotes,
+								totalUsers: msg.totalUsers,
+							})
+							break
 
-				case 'queue-update':
-					setState(prev => ({ ...prev, queue: msg.queue }))
-					break
+						case 'play-pause':
+							setState(prev => ({
+								...prev,
+								isPlaying: msg.isPlaying,
+								position: msg.position,
+								lastSync: msg.lastSync,
+							}))
+							break
 
-				case 'skip-vote':
-					setState(prev => ({ ...prev, skipVotes: msg.skipVotes }))
-					break
-			}
+						case 'seek':
+							setState(prev => ({
+								...prev,
+								position: msg.position,
+								lastSync: msg.lastSync,
+							}))
+							break
+
+						case 'volume':
+							setState(prev => ({ ...prev, volume: msg.volume }))
+							break
+
+						case 'queue-update':
+							setState(prev => ({ ...prev, queue: msg.queue }))
+							break
+
+						case 'skip-vote':
+							setState(prev => ({ ...prev, skipVotes: msg.skipVotes }))
+							break
+					}
+				}
+
+				ws.onclose = () => {
+					setIsConnected(false)
+					scheduleReconnect()
+				}
+				ws.onerror = () => setIsConnected(false)
+			})()
 		}
 
-		ws.onclose = () => setIsConnected(false)
-		ws.onerror = () => setIsConnected(false)
+		connect()
 
 		return () => {
-			ws.close()
+			shouldReconnectRef.current = false
+			if (reconnectTimerRef.current) {
+				clearTimeout(reconnectTimerRef.current)
+				reconnectTimerRef.current = null
+			}
+			wsRef.current?.close()
 		}
 	}, [roomId, userId, userName])
 

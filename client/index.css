@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import url('tldraw/tldraw.css');
 
 * {
@@ -10,14 +10,14 @@ html {
 }
 
 body {
-	font-family: 'Plus Jakarta Sans', sans-serif;
+	font-family: 'Inter', sans-serif;
 	overscroll-behavior: none;
 	margin: 0;
 	padding: 0;
 }
 
 .workspace-title {
-	font-family: 'Space Grotesk', sans-serif;
+	font-family: 'Inter', sans-serif;
 }
 
 button,
@@ -45,5 +45,28 @@ textarea {
 }
 
 .tlui-layout__top__right {
+	display: none !important;
+}
+
+.tlui-layout__top {
+	left: 0;
+	right: 0;
+	width: 100%;
+	padding: 0;
+}
+
+.tlui-layout__top__left {
+	flex: 1 1 auto !important;
+	width: 100%;
+}
+
+.tlui-layout__top__left > .tlui-menu-zone {
+	width: 100%;
+	border-right: 0;
+	border-bottom-right-radius: 0;
+	background: rgba(251, 251, 250, 0.96);
+}
+
+.tlui-page-menu__trigger {
 	display: none !important;
 }

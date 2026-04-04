@@ -1,41 +1,47 @@
 import { useSync } from '@tldraw/sync'
-import type { LucideIcon } from 'lucide-react'
 import {
-	Check,
-	Copy,
-	Share2,
-	Wifi,
-} from 'lucide-react'
-import { ReactNode, Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+	KeyboardEvent as ReactKeyboardEvent,
+	PointerEvent as ReactPointerEvent,
+	ReactNode,
+	Suspense,
+	lazy,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react'
 import { useParams } from 'react-router-dom'
-import { Editor, Tldraw, useValue } from 'tldraw'
+import { Editor, Tldraw, defaultShapeUtils, useValue } from 'tldraw'
 import { getBookmarkPreview } from '../getBookmarkPreview'
 import { multiplayerAssetStore } from '../multiplayerAssetStore'
-import { PANEL_TOOLS, Sidebar, type ToolPanel } from '../components/Sidebar'
-import { FloatingWindow } from '../components/FloatingWindow'
+import { Sidebar } from '../components/Sidebar'
 import { TldrawContextualToolbar } from '../components/TldrawContextualToolbar'
-import { Button } from '../components/ui/button'
-import { Card } from '../components/ui/card'
-import { Input } from '../components/ui/input'
-import { useThemePreference } from '../hooks/useTheme'
 import { getLocalStorageItem, setLocalStorageItem } from '../localStorage'
+import { ReactionStampShapeUtil } from '../tldraw/ReactionStampShapeUtil'
+import { StampTool } from '../tldraw/StampTool'
 import { getWsUrl } from '../utils/network'
 import { getUserColor } from '../utils/supabase'
 import { getTldrawAssetUrls } from '../utils/tldrawAssets'
+import { useAgentSync } from '../hooks/useAgentSync'
+
+type PageId = ReturnType<Editor['getCurrentPageId']>
+type ResizingSide = 'left' | 'right'
+
+const DESKTOP_LAYOUT_QUERY = '(min-width: 1280px)'
+const LEFT_PANEL_WIDTH_KEY = 'room-left-panel-width'
+const RIGHT_PANEL_WIDTH_KEY = 'room-right-panel-width'
+const DEFAULT_LEFT_PANEL_WIDTH = 260
+const DEFAULT_RIGHT_PANEL_WIDTH = 340
+const LEFT_PANEL_MIN_WIDTH = 220
+const LEFT_PANEL_MAX_WIDTH = 420
+const RIGHT_PANEL_MIN_WIDTH = 280
+const RIGHT_PANEL_MAX_WIDTH = 520
+const ROOM_MIN_CENTER_WIDTH = 560
+const PANEL_KEYBOARD_STEP = 24
 
 const ChatPanel = lazy(async () => {
 	const mod = await import('../components/ChatPanel')
 	return { default: mod.ChatPanel }
-})
-
-const VideoCallPanel = lazy(async () => {
-	const mod = await import('../components/VideoCallPanel')
-	return { default: mod.VideoCallPanel }
-})
-
-const GeminiPanel = lazy(async () => {
-	const mod = await import('../components/GeminiPanel')
-	return { default: mod.GeminiPanel }
 })
 
 const MusicPlayer = lazy(async () => {
@@ -48,72 +54,6 @@ const CalendarWidget = lazy(async () => {
 	return { default: mod.CalendarWidget }
 })
 
-const TelegramSettings = lazy(async () => {
-	const mod = await import('../components/TelegramSettings')
-	return { default: mod.TelegramSettings }
-})
-
-const PANEL_SPECS: Record<
-	ToolPanel,
-	{
-		title: string
-		subtitle: string
-		accent: string
-		position: { x: number; y: number }
-		size: { width: number; height: number }
-		minSize: { width?: number; height?: number }
-	}
-> = {
-	chat: {
-		title: 'Chat',
-		subtitle: 'Live room presence and messages',
-		accent: 'hsl(217, 80%, 50%)',
-		position: { x: 28, y: 152 },
-		size: { width: 390, height: 360 },
-		minSize: { width: 360, height: 320 },
-	},
-	video: {
-		title: 'Video Call',
-		subtitle: 'Camera, mic, and screen sharing',
-		accent: 'hsl(142, 70%, 45%)',
-		position: { x: 210, y: 168 },
-		size: { width: 560, height: 460 },
-		minSize: { width: 420, height: 280 },
-	},
-	gemini: {
-		title: 'Gemini AI',
-		subtitle: 'Board-aware assistant',
-		accent: 'hsl(260, 80%, 55%)',
-		position: { x: 430, y: 148 },
-		size: { width: 430, height: 560 },
-		minSize: { width: 380, height: 340 },
-	},
-	music: {
-		title: 'Music',
-		subtitle: 'Shared soundtrack',
-		accent: 'hsl(300, 70%, 50%)',
-		position: { x: 110, y: 452 },
-		size: { width: 400, height: 360 },
-		minSize: { width: 360, height: 260 },
-	},
-	calendar: {
-		title: 'Calendar',
-		subtitle: 'Events and scheduling',
-		accent: 'hsl(45, 90%, 50%)',
-		position: { x: 44, y: 210 },
-		size: { width: 360, height: 480 },
-		minSize: { width: 340, height: 320 },
-	},
-	telegram: {
-		title: 'Telegram',
-		subtitle: 'Share room updates',
-		accent: 'hsl(199, 92%, 56%)',
-		position: { x: 590, y: 188 },
-		size: { width: 390, height: 430 },
-		minSize: { width: 360, height: 300 },
-	},
-}
-
 function createRoomId() {
 	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
 		return `test-room-${crypto.randomUUID()}`
@@ -122,7 +62,6 @@ function createRoomId() {
 	return `test-room-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-// Generate or retrieve a persistent user identity
 function getUserIdentity() {
 	let userId = getLocalStorageItem('user-id')
 	let userName = getLocalStorageItem('user-name')
@@ -139,18 +78,74 @@ function getUserIdentity() {
 	return { userId, userName, userColor: getUserColor(userId) }
 }
 
-function truncateMiddle(value: string, start = 8, end = 6) {
-	if (value.length <= start + end + 3) return value
-	return `${value.slice(0, start)}...${value.slice(-end)}`
+function clamp(value: number, min: number, max: number) {
+	return Math.min(Math.max(value, min), max)
+}
+
+function getStoredPanelWidth(key: string, fallback: number) {
+	const storedValue = getLocalStorageItem(key)
+	if (!storedValue) return fallback
+
+	const parsedValue = Number.parseInt(storedValue, 10)
+	return Number.isFinite(parsedValue) ? parsedValue : fallback
+}
+
+function getIsDesktopLayout() {
+	return typeof window !== 'undefined' && window.matchMedia(DESKTOP_LAYOUT_QUERY).matches
+}
+
+function getMaxLeftPanelWidth(viewportWidth: number, rightPanelWidth: number) {
+	return Math.max(
+		LEFT_PANEL_MIN_WIDTH,
+		Math.min(LEFT_PANEL_MAX_WIDTH, viewportWidth - rightPanelWidth - ROOM_MIN_CENTER_WIDTH)
+	)
+}
+
+function getMaxRightPanelWidth(viewportWidth: number, leftPanelWidth: number) {
+	return Math.max(
+		RIGHT_PANEL_MIN_WIDTH,
+		Math.min(RIGHT_PANEL_MAX_WIDTH, viewportWidth - leftPanelWidth - ROOM_MIN_CENTER_WIDTH)
+	)
+}
+
+function normalizePanelWidths(leftPanelWidth: number, rightPanelWidth: number, viewportWidth: number) {
+	let nextLeftPanelWidth = clamp(leftPanelWidth, LEFT_PANEL_MIN_WIDTH, LEFT_PANEL_MAX_WIDTH)
+	let nextRightPanelWidth = clamp(rightPanelWidth, RIGHT_PANEL_MIN_WIDTH, RIGHT_PANEL_MAX_WIDTH)
+	const maxCombinedWidth = Math.max(
+		LEFT_PANEL_MIN_WIDTH + RIGHT_PANEL_MIN_WIDTH,
+		viewportWidth - ROOM_MIN_CENTER_WIDTH
+	)
+
+	if (nextLeftPanelWidth + nextRightPanelWidth <= maxCombinedWidth) {
+		return {
+			leftPanelWidth: nextLeftPanelWidth,
+			rightPanelWidth: nextRightPanelWidth,
+		}
+	}
+
+	const overflow = nextLeftPanelWidth + nextRightPanelWidth - maxCombinedWidth
+	const reducibleRightPanelWidth = nextRightPanelWidth - RIGHT_PANEL_MIN_WIDTH
+	const rightReduction = Math.min(overflow, reducibleRightPanelWidth)
+	nextRightPanelWidth -= rightReduction
+
+	const remainingOverflow = overflow - rightReduction
+	if (remainingOverflow > 0) {
+		nextLeftPanelWidth = Math.max(LEFT_PANEL_MIN_WIDTH, nextLeftPanelWidth - remainingOverflow)
+	}
+
+	return {
+		leftPanelWidth: nextLeftPanelWidth,
+		rightPanelWidth: nextRightPanelWidth,
+	}
 }
 
 export function Room() {
 	const { roomId } = useParams<{ roomId: string }>()
 	const [editorRef, setEditorRef] = useState<Editor | null>(null)
 	const identity = useMemo(() => getUserIdentity(), [])
-	const [currentUserName, setCurrentUserName] = useState(identity.userName)
-	const { resolvedTheme } = useThemePreference()
 	const assetUrls = useMemo(() => getTldrawAssetUrls(), [])
+	const tldrawShapeUtils = useMemo(() => [...defaultShapeUtils, ReactionStampShapeUtil], [])
+	const tldrawTools = useMemo(() => [StampTool], [])
 	const tldrawComponents = useMemo(
 		() => ({
 			StylePanel: null,
@@ -162,11 +157,11 @@ export function Room() {
 	useEffect(() => {
 		if (!editorRef) return
 		editorRef.user.updateUserPreferences({
-			colorScheme: resolvedTheme === 'dark' ? 'dark' : 'light',
-			name: currentUserName,
+			colorScheme: 'light',
+			name: identity.userName,
 			color: identity.userColor,
 		})
-	}, [currentUserName, editorRef, identity.userColor, resolvedTheme])
+	}, [editorRef, identity.userColor, identity.userName])
 
 	const activeUsers = useValue(
 		'active users',
@@ -181,54 +176,69 @@ export function Room() {
 		[editorRef]
 	)
 
-	// Create a store connected to multiplayer.
+	const pages = useValue(
+		'pages',
+		() => (editorRef ? editorRef.getPages().map((page) => ({ id: page.id, name: page.name })) : []),
+		[editorRef]
+	)
+
+	const currentPageId = useValue(
+		'current page id',
+		() => (editorRef ? editorRef.getCurrentPageId() : null),
+		[editorRef]
+	)
+
 	const store = useSync({
 		uri: getWsUrl(`/api/connect/${roomId}`),
 		assets: multiplayerAssetStore,
+		shapeUtils: tldrawShapeUtils,
 	})
-
-	const getBoardContext = useCallback(() => {
-		if (!editorRef) return ''
-		try {
-			const shapes = editorRef.getCurrentPageShapes()
-			return shapes
-				.map((s: any) => {
-					if (s.type === 'text') return s.props?.text || ''
-					if (s.type === 'note') return s.props?.text || ''
-					if (s.type === 'geo') return `[${s.props?.geo}] ${s.props?.text || ''}`
-					return `[${s.type}]`
-				})
-				.filter(Boolean)
-				.join('\n')
-		} catch {
-			return ''
-		}
-	}, [editorRef])
 
 	return (
 		<RoomWrapper
 			roomId={roomId}
 			userId={identity.userId}
-			userName={currentUserName}
+			userName={identity.userName}
 			userColor={identity.userColor}
-			setUserName={setCurrentUserName}
 			activeUsers={activeUsers}
-			getBoardContext={getBoardContext}
+			pages={pages}
+			currentPageId={currentPageId}
+			onSelectPage={(pageId) => editorRef?.setCurrentPage(pageId)}
+			onAddPage={() => {
+				if (!editorRef) return
+				const existingPageIds = new Set(editorRef.getPages().map((page) => page.id))
+				const nextPageNumber = editorRef.getPages().length + 1
+				editorRef.markHistoryStoppingPoint('creating page')
+				editorRef.createPage({ name: `Page ${nextPageNumber}` })
+				const createdPage = editorRef.getPages().find((page) => !existingPageIds.has(page.id))
+				if (createdPage) {
+					editorRef.setCurrentPage(createdPage.id)
+				}
+			}}
+			onDeletePage={(pageId) => {
+				if (!editorRef || editorRef.getPages().length <= 1) return
+				editorRef.markHistoryStoppingPoint('deleting page')
+				editorRef.deletePage(pageId)
+			}}
 		>
-			<Tldraw
-				store={store}
-				assetUrls={assetUrls}
-				components={tldrawComponents}
-				options={{ deepLinks: true }}
-				onMount={(editor) => {
-					editor.registerExternalAssetHandler('url', getBookmarkPreview)
-					editor.updateInstanceState({ isGridMode: true })
-					editor.user.updateUserPreferences({
-						colorScheme: resolvedTheme === 'dark' ? 'dark' : 'light',
-					})
-					setEditorRef(editor)
-				}}
-			/>
+			<div className="absolute inset-0">
+				<Tldraw
+					store={store}
+					assetUrls={assetUrls}
+					components={tldrawComponents}
+					shapeUtils={tldrawShapeUtils}
+					tools={tldrawTools}
+					options={{ deepLinks: true }}
+					onMount={(editor) => {
+						editor.registerExternalAssetHandler('url', getBookmarkPreview)
+						editor.updateInstanceState({ isGridMode: true })
+						editor.user.updateUserPreferences({
+							colorScheme: 'light',
+						})
+						setEditorRef(editor)
+					}}
+				/>
+			</div>
 		</RoomWrapper>
 	)
 }
@@ -239,91 +249,41 @@ function RoomWrapper({
 	userId,
 	userName,
 	userColor,
-	setUserName,
 	activeUsers,
-	getBoardContext,
+	pages,
+	currentPageId,
+	onSelectPage,
+	onAddPage,
+	onDeletePage,
 }: {
 	children: ReactNode
 	roomId?: string
 	userId: string
 	userName: string
 	userColor: string
-	setUserName: (name: string) => void
 	activeUsers: Array<{ userId: string; userName: string; color: string }>
-	getBoardContext: () => string
+	pages: Array<{ id: PageId; name: string }>
+	currentPageId: PageId | null
+	onSelectPage: (pageId: PageId) => void
+	onAddPage: () => void
+	onDeletePage: (pageId: PageId) => void
 }) {
-	const [didCopy, setDidCopy] = useState(false)
-	const [editingName, setEditingName] = useState(false)
-	const [nameInput, setNameInput] = useState(userName)
-	const [mountedPanels, setMountedPanels] = useState<Partial<Record<ToolPanel, boolean>>>({})
-	const [visiblePanels, setVisiblePanels] = useState<Partial<Record<ToolPanel, boolean>>>({})
-	const [panelZ, setPanelZ] = useState<Record<ToolPanel, number>>({
-		chat: 1100,
-		video: 1101,
-		gemini: 1102,
-		music: 1103,
-		calendar: 1104,
-		telegram: 1105,
-	})
-
-	useEffect(() => {
-		setNameInput(userName)
-	}, [userName])
-
-	useEffect(() => {
-		if (!didCopy) return
-		const timeout = setTimeout(() => setDidCopy(false), 2200)
-		return () => clearTimeout(timeout)
-	}, [didCopy])
-
-	const focusPanel = useCallback((panel: ToolPanel) => {
-		setPanelZ((prev) => {
-			const top = Math.max(...Object.values(prev))
-			if (prev[panel] === top) return prev
-			return { ...prev, [panel]: top + 1 }
-		})
-	}, [])
-
-	const togglePanel = useCallback(
-		(panel: ToolPanel) => {
-			setMountedPanels((prev) => ({ ...prev, [panel]: true }))
-			setVisiblePanels((prev) => {
-				const nextVisible = !prev[panel]
-				return { ...prev, [panel]: nextVisible }
-			})
-			focusPanel(panel)
-		},
-		[focusPanel]
-	)
-
-	const hidePanel = useCallback((panel: ToolPanel) => {
-		setVisiblePanels((prev) => ({ ...prev, [panel]: false }))
-	}, [])
-
-	const closePanel = useCallback((panel: ToolPanel) => {
-		setVisiblePanels((prev) => ({ ...prev, [panel]: false }))
-		setMountedPanels((prev) => ({ ...prev, [panel]: false }))
-	}, [])
-
-	const handleNameSave = () => {
-		const nextName = nameInput.trim()
-		if (!nextName) return
-		setLocalStorageItem('user-name', nextName)
-		setUserName(nextName)
-		setEditingName(false)
-	}
-
-	const handleCopyLink = async () => {
-		try {
-			await navigator.clipboard.writeText(window.location.href)
-			setDidCopy(true)
-		} catch {
-			setDidCopy(false)
-		}
-	}
-
-	const openPanelsCount = Object.values(visiblePanels).filter(Boolean).length
 	const currentRoomId = roomId ?? createRoomId()
+	const agent = useAgentSync(currentRoomId, userId, userName)
+	const [isDesktopLayout, setIsDesktopLayout] = useState(() => getIsDesktopLayout())
+	const [leftPanelWidth, setLeftPanelWidth] = useState(() =>
+		getStoredPanelWidth(LEFT_PANEL_WIDTH_KEY, DEFAULT_LEFT_PANEL_WIDTH)
+	)
+	const [rightPanelWidth, setRightPanelWidth] = useState(() =>
+		getStoredPanelWidth(RIGHT_PANEL_WIDTH_KEY, DEFAULT_RIGHT_PANEL_WIDTH)
+	)
+	const [activeResize, setActiveResize] = useState<{
+		side: ResizingSide
+		startX: number
+		startWidth: number
+	} | null>(null)
+	const leftPanelWidthRef = useRef(leftPanelWidth)
+	const rightPanelWidthRef = useRef(rightPanelWidth)
 	const allActiveUsers = useMemo(() => {
 		const map = new Map<string, { userId: string; userName: string; color: string }>()
 		map.set(userId, { userId, userName, color: userColor })
@@ -333,244 +293,262 @@ function RoomWrapper({
 		return Array.from(map.values())
 	}, [activeUsers, userColor, userId, userName])
 
+	useEffect(() => {
+		leftPanelWidthRef.current = leftPanelWidth
+	}, [leftPanelWidth])
+
+	useEffect(() => {
+		rightPanelWidthRef.current = rightPanelWidth
+	}, [rightPanelWidth])
+
+	useEffect(() => {
+		if (typeof window === 'undefined') return
+
+		const mediaQuery = window.matchMedia(DESKTOP_LAYOUT_QUERY)
+		const handleChange = (event: MediaQueryListEvent) => {
+			setIsDesktopLayout(event.matches)
+		}
+
+		setIsDesktopLayout(mediaQuery.matches)
+		mediaQuery.addEventListener('change', handleChange)
+		return () => mediaQuery.removeEventListener('change', handleChange)
+	}, [])
+
+	useEffect(() => {
+		setLocalStorageItem(LEFT_PANEL_WIDTH_KEY, String(leftPanelWidth))
+	}, [leftPanelWidth])
+
+	useEffect(() => {
+		setLocalStorageItem(RIGHT_PANEL_WIDTH_KEY, String(rightPanelWidth))
+	}, [rightPanelWidth])
+
+	useEffect(() => {
+		if (!isDesktopLayout || typeof window === 'undefined') return
+
+		const syncPanelWidths = () => {
+			const normalizedWidths = normalizePanelWidths(
+				leftPanelWidthRef.current,
+				rightPanelWidthRef.current,
+				window.innerWidth
+			)
+
+			if (normalizedWidths.leftPanelWidth !== leftPanelWidthRef.current) {
+				setLeftPanelWidth(normalizedWidths.leftPanelWidth)
+			}
+
+			if (normalizedWidths.rightPanelWidth !== rightPanelWidthRef.current) {
+				setRightPanelWidth(normalizedWidths.rightPanelWidth)
+			}
+		}
+
+		syncPanelWidths()
+		window.addEventListener('resize', syncPanelWidths)
+		return () => window.removeEventListener('resize', syncPanelWidths)
+	}, [isDesktopLayout])
+
+	useEffect(() => {
+		if (!activeResize || typeof window === 'undefined') return
+
+		const handlePointerMove = (event: PointerEvent) => {
+			if (activeResize.side === 'left') {
+				const maxLeftPanelWidth = getMaxLeftPanelWidth(window.innerWidth, rightPanelWidthRef.current)
+				const nextLeftPanelWidth = clamp(
+					activeResize.startWidth + event.clientX - activeResize.startX,
+					LEFT_PANEL_MIN_WIDTH,
+					maxLeftPanelWidth
+				)
+				setLeftPanelWidth(nextLeftPanelWidth)
+				return
+			}
+
+			const maxRightPanelWidth = getMaxRightPanelWidth(window.innerWidth, leftPanelWidthRef.current)
+			const nextRightPanelWidth = clamp(
+				activeResize.startWidth - (event.clientX - activeResize.startX),
+				RIGHT_PANEL_MIN_WIDTH,
+				maxRightPanelWidth
+			)
+			setRightPanelWidth(nextRightPanelWidth)
+		}
+
+		const handlePointerUp = () => {
+			setActiveResize(null)
+		}
+
+		const previousCursor = document.body.style.cursor
+		const previousUserSelect = document.body.style.userSelect
+		document.body.style.cursor = 'col-resize'
+		document.body.style.userSelect = 'none'
+
+		window.addEventListener('pointermove', handlePointerMove)
+		window.addEventListener('pointerup', handlePointerUp)
+
+		return () => {
+			document.body.style.cursor = previousCursor
+			document.body.style.userSelect = previousUserSelect
+			window.removeEventListener('pointermove', handlePointerMove)
+			window.removeEventListener('pointerup', handlePointerUp)
+		}
+	}, [activeResize])
+
+	const startResize = (side: ResizingSide, event: ReactPointerEvent<HTMLDivElement>) => {
+		if (!isDesktopLayout || event.button !== 0) return
+
+		event.preventDefault()
+		setActiveResize({
+			side,
+			startX: event.clientX,
+			startWidth: side === 'left' ? leftPanelWidthRef.current : rightPanelWidthRef.current,
+		})
+	}
+
+	const nudgePanelWidth = (side: ResizingSide, direction: 'increase' | 'decrease') => {
+		if (typeof window === 'undefined') return
+
+		const delta = direction === 'increase' ? PANEL_KEYBOARD_STEP : -PANEL_KEYBOARD_STEP
+		if (side === 'left') {
+			const maxLeftPanelWidth = getMaxLeftPanelWidth(window.innerWidth, rightPanelWidthRef.current)
+			setLeftPanelWidth((currentWidth) =>
+				clamp(currentWidth + delta, LEFT_PANEL_MIN_WIDTH, maxLeftPanelWidth)
+			)
+			return
+		}
+
+		const maxRightPanelWidth = getMaxRightPanelWidth(window.innerWidth, leftPanelWidthRef.current)
+		setRightPanelWidth((currentWidth) =>
+			clamp(currentWidth + delta, RIGHT_PANEL_MIN_WIDTH, maxRightPanelWidth)
+		)
+	}
+
+	const handleResizeHandleKeyDown = (
+		side: ResizingSide,
+		event: ReactKeyboardEvent<HTMLDivElement>
+	) => {
+		if (side === 'left') {
+			if (event.key === 'ArrowLeft') {
+				event.preventDefault()
+				nudgePanelWidth('left', 'decrease')
+			}
+			if (event.key === 'ArrowRight') {
+				event.preventDefault()
+				nudgePanelWidth('left', 'increase')
+			}
+			return
+		}
+
+		if (event.key === 'ArrowLeft') {
+			event.preventDefault()
+			nudgePanelWidth('right', 'increase')
+		}
+		if (event.key === 'ArrowRight') {
+			event.preventDefault()
+			nudgePanelWidth('right', 'decrease')
+		}
+	}
+
 	return (
-		<div className="relative min-h-screen overflow-hidden bg-background text-foreground">
-			<div className="pointer-events-none absolute right-3 top-3 z-[980] md:right-4 md:top-4">
-				<Card className="pointer-events-auto rounded-[22px] border-border/70 bg-background/88 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-xl">
-					<div className="flex flex-wrap items-center gap-2 p-2">
-						<div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/80 px-2.5 py-1.5">
-							<div className="flex -space-x-2">
-								{allActiveUsers.slice(0, 4).map((activeUser) => (
-									<div
-										key={activeUser.userId}
-										className="flex size-8 items-center justify-center rounded-full border-2 border-background text-[11px] font-bold text-white"
-										style={{ background: activeUser.color }}
-										title={activeUser.userName}
-									>
-										{activeUser.userName.charAt(0).toUpperCase()}
-									</div>
-								))}
-							</div>
-							<div className="pr-1 leading-tight">
-								<div className="inline-flex items-center gap-1.5 text-sm font-medium">
-									<Wifi size={12} />
-									Active users
-								</div>
-								<div className="text-[11px] text-muted-foreground">
-									{allActiveUsers.length} in room
-									<span className="ml-1 hidden sm:inline">· {truncateMiddle(currentRoomId, 8, 4)}</span>
-								</div>
-							</div>
-						</div>
-
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							className="rounded-full border-border/70 bg-card/80 px-3"
-							onClick={handleCopyLink}
-						>
-							{didCopy ? <Check size={14} className="mr-1.5" /> : <Share2 size={14} className="mr-1.5" />}
-							{didCopy ? 'Copied' : 'Share'}
-						</Button>
-
-						{editingName ? (
-							<div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/80 p-1.5">
-								<Input
-									value={nameInput}
-									onChange={(event) => setNameInput(event.target.value)}
-									onKeyDown={(event) => {
-										if (event.key === 'Enter') handleNameSave()
-										if (event.key === 'Escape') {
-											setNameInput(userName)
-											setEditingName(false)
-										}
-									}}
-									autoFocus
-									className="h-8 min-w-[10rem] border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
-								/>
-								<Button type="button" size="sm" className="rounded-full px-3" onClick={handleNameSave}>
-									Save
-								</Button>
-							</div>
-						) : (
-							<button
-								type="button"
-								className="flex items-center gap-2 rounded-full border border-border/70 bg-card/80 px-2 py-1.5 text-left transition hover:border-border hover:bg-card"
-								onClick={() => setEditingName(true)}
-							>
-								<div
-									className="flex size-8 items-center justify-center rounded-full text-xs font-bold text-white"
-									style={{ background: userColor }}
-								>
-									{userName.charAt(0).toUpperCase()}
-								</div>
-								<div className="pr-2 leading-tight">
-									<div className="text-sm font-medium">{userName}</div>
-									<div className="text-[11px] text-muted-foreground">My profile</div>
-								</div>
-							</button>
-						)}
-					</div>
-				</Card>
-			</div>
-
-			<main className="absolute inset-0">
-				<div className="absolute inset-0 overflow-hidden">
-					{children}
-					<div className="pointer-events-none absolute inset-2 rounded-[28px] border border-white/35 dark:border-white/10" />
-
-					<Sidebar visiblePanels={visiblePanels} onPanelChange={togglePanel} chatUnread={0} />
-
-					<Suspense fallback={null}>
-						{mountedPanels.chat ? (
-							<FloatingWindow
-								id="chat"
-								title={PANEL_SPECS.chat.title}
-								subtitle={PANEL_SPECS.chat.subtitle}
-								accent={PANEL_SPECS.chat.accent}
-								visible={!!visiblePanels.chat}
-								zIndex={panelZ.chat}
-								defaultPosition={PANEL_SPECS.chat.position}
-								defaultSize={PANEL_SPECS.chat.size}
-								minSize={PANEL_SPECS.chat.minSize}
-								onHide={() => hidePanel('chat')}
-								onClose={() => closePanel('chat')}
-								onFocus={() => focusPanel('chat')}
-							>
-								<ChatPanel
-									roomId={roomId || ''}
-									userId={userId}
-									userName={userName}
-									userColor={userColor}
-									isOpen={!!visiblePanels.chat}
-									onClose={() => hidePanel('chat')}
-								/>
-							</FloatingWindow>
-						) : null}
-
-						{mountedPanels.video ? (
-							<FloatingWindow
-								id="video"
-								title={PANEL_SPECS.video.title}
-								subtitle={PANEL_SPECS.video.subtitle}
-								accent={PANEL_SPECS.video.accent}
-								visible={!!visiblePanels.video}
-								zIndex={panelZ.video}
-								defaultPosition={PANEL_SPECS.video.position}
-								defaultSize={PANEL_SPECS.video.size}
-								minSize={PANEL_SPECS.video.minSize}
-								onHide={() => hidePanel('video')}
-								onClose={() => closePanel('video')}
-								onFocus={() => focusPanel('video')}
-							>
-								<VideoCallPanel
-									roomId={roomId || ''}
-									userId={userId}
-									userName={userName}
-									isOpen={!!visiblePanels.video}
-									onClose={() => hidePanel('video')}
-								/>
-							</FloatingWindow>
-						) : null}
-
-						{mountedPanels.gemini ? (
-							<FloatingWindow
-								id="gemini"
-								title={PANEL_SPECS.gemini.title}
-								subtitle={PANEL_SPECS.gemini.subtitle}
-								accent={PANEL_SPECS.gemini.accent}
-								visible={!!visiblePanels.gemini}
-								zIndex={panelZ.gemini}
-								defaultPosition={PANEL_SPECS.gemini.position}
-								defaultSize={PANEL_SPECS.gemini.size}
-								minSize={PANEL_SPECS.gemini.minSize}
-								onHide={() => hidePanel('gemini')}
-								onClose={() => closePanel('gemini')}
-								onFocus={() => focusPanel('gemini')}
-							>
-								<GeminiPanel
-									roomId={roomId || ''}
-									isOpen={!!visiblePanels.gemini}
-									onClose={() => hidePanel('gemini')}
-									getBoardContext={getBoardContext}
-								/>
-							</FloatingWindow>
-						) : null}
-
-						{mountedPanels.music ? (
-							<FloatingWindow
-								id="music"
-								title={PANEL_SPECS.music.title}
-								subtitle={PANEL_SPECS.music.subtitle}
-								accent={PANEL_SPECS.music.accent}
-								visible={!!visiblePanels.music}
-								zIndex={panelZ.music}
-								defaultPosition={PANEL_SPECS.music.position}
-								defaultSize={PANEL_SPECS.music.size}
-								minSize={PANEL_SPECS.music.minSize}
-								onHide={() => hidePanel('music')}
-								onClose={() => closePanel('music')}
-								onFocus={() => focusPanel('music')}
-							>
-								<MusicPlayer
-									roomId={roomId || ''}
-									userId={userId}
-									userName={userName}
-									isOpen={!!visiblePanels.music}
-									onClose={() => hidePanel('music')}
-								/>
-							</FloatingWindow>
-						) : null}
-
-						{mountedPanels.calendar ? (
-							<FloatingWindow
-								id="calendar"
-								title={PANEL_SPECS.calendar.title}
-								subtitle={PANEL_SPECS.calendar.subtitle}
-								accent={PANEL_SPECS.calendar.accent}
-								visible={!!visiblePanels.calendar}
-								zIndex={panelZ.calendar}
-								defaultPosition={PANEL_SPECS.calendar.position}
-								defaultSize={PANEL_SPECS.calendar.size}
-								minSize={PANEL_SPECS.calendar.minSize}
-								onHide={() => hidePanel('calendar')}
-								onClose={() => closePanel('calendar')}
-								onFocus={() => focusPanel('calendar')}
-							>
-								<CalendarWidget
-									userId={userId}
-									isOpen={!!visiblePanels.calendar}
-									onClose={() => hidePanel('calendar')}
-								/>
-							</FloatingWindow>
-						) : null}
-
-						{mountedPanels.telegram ? (
-							<FloatingWindow
-								id="telegram"
-								title={PANEL_SPECS.telegram.title}
-								subtitle={PANEL_SPECS.telegram.subtitle}
-								accent={PANEL_SPECS.telegram.accent}
-								visible={!!visiblePanels.telegram}
-								zIndex={panelZ.telegram}
-								defaultPosition={PANEL_SPECS.telegram.position}
-								defaultSize={PANEL_SPECS.telegram.size}
-								minSize={PANEL_SPECS.telegram.minSize}
-								onHide={() => hidePanel('telegram')}
-								onClose={() => closePanel('telegram')}
-								onFocus={() => focusPanel('telegram')}
-							>
-								<TelegramSettings
-									roomId={roomId || ''}
-									isOpen={!!visiblePanels.telegram}
-									onClose={() => hidePanel('telegram')}
-								/>
-							</FloatingWindow>
-						) : null}
-					</Suspense>
+		<div className="h-screen overflow-hidden bg-background text-foreground">
+			<div
+				className="grid h-screen grid-cols-1 overflow-hidden"
+				style={
+					isDesktopLayout
+						? {
+								gridTemplateColumns: `${leftPanelWidth}px minmax(0, 1fr) ${rightPanelWidth}px`,
+							}
+						: undefined
+				}
+			>
+				<div className="relative h-full min-h-0">
+					<Sidebar
+						currentRoomId={currentRoomId}
+						userId={userId}
+						userName={userName}
+						userColor={userColor}
+						activeUsers={allActiveUsers}
+						pages={pages.map((page) => ({ id: String(page.id), name: page.name }))}
+						currentPageId={currentPageId ? String(currentPageId) : null}
+						agentStatus={agent.agentStatus}
+						onSelectPage={(pageId) => onSelectPage(pageId as PageId)}
+						onAddPage={onAddPage}
+						onDeletePage={(pageId) => onDeletePage(pageId as PageId)}
+					/>
+					<ResizeHandle
+						side="left"
+						onPointerDown={startResize}
+						onKeyDown={handleResizeHandleKeyDown}
+					/>
 				</div>
-			</main>
+
+				<section className="relative h-full overflow-hidden border-r border-border bg-card">
+					{children}
+				</section>
+
+				<aside className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#fbfbfa] px-3 py-2">
+					<ResizeHandle
+						side="right"
+						onPointerDown={startResize}
+						onKeyDown={handleResizeHandleKeyDown}
+					/>
+					<Suspense fallback={null}>
+						<section className="min-h-0 flex-[1.2] overflow-hidden">
+							<CalendarWidget userId={userId} isOpen onClose={() => {}} />
+						</section>
+
+						<section className="min-h-0 flex-[0.85] overflow-hidden border-t border-border/50 pt-2">
+							<ChatPanel
+								roomId={currentRoomId}
+								userId={userId}
+								userName={userName}
+								userColor={userColor}
+								isOpen
+								onClose={() => {}}
+								agentSuggestions={agent.suggestions}
+								agentMessages={agent.messages}
+								agentStatus={agent.agentStatus}
+								onApproveSuggestion={agent.approveSuggestion}
+								onDismissSuggestion={agent.dismissSuggestion}
+							/>
+						</section>
+
+						<section className="mt-auto basis-[214px] flex-none overflow-hidden border-t border-border/50 pt-2">
+							<MusicPlayer
+								roomId={currentRoomId}
+								userId={userId}
+								userName={userName}
+								isOpen
+								onClose={() => {}}
+							/>
+						</section>
+					</Suspense>
+				</aside>
+			</div>
+		</div>
+	)
+}
+
+function ResizeHandle({
+	side,
+	onPointerDown,
+	onKeyDown,
+}: {
+	side: ResizingSide
+	onPointerDown: (side: ResizingSide, event: ReactPointerEvent<HTMLDivElement>) => void
+	onKeyDown: (side: ResizingSide, event: ReactKeyboardEvent<HTMLDivElement>) => void
+}) {
+	const isLeftHandle = side === 'left'
+
+	return (
+		<div
+			role="separator"
+			tabIndex={0}
+			aria-orientation="vertical"
+			aria-label={isLeftHandle ? 'Resize left sidebar' : 'Resize right panel'}
+			className={`group absolute inset-y-0 z-20 hidden w-4 cursor-col-resize touch-none items-center justify-center outline-none xl:flex ${
+				isLeftHandle ? '-right-2' : '-left-2'
+			}`}
+			onPointerDown={(event) => onPointerDown(side, event)}
+			onKeyDown={(event) => onKeyDown(side, event)}
+		>
+			<span className="h-full w-px rounded-full bg-border/70 transition-colors group-hover:bg-foreground/20 group-focus-visible:bg-foreground/30" />
 		</div>
 	)
 }
