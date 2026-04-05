@@ -1,5 +1,15 @@
 # tldraw sync server
 
+## Project Slides
+
+![Slide 1](./README%20IMAGES/Slide%2016_9%20-%201.jpg)
+![Slide 2](./README%20IMAGES/Slide%2016_9%20-%202.jpg)
+![Slide 3](./README%20IMAGES/Slide%2016_9%20-%203.jpg)
+![Slide 4](./README%20IMAGES/Slide%2016_9%20-%204.jpg)
+![Slide 5](./README%20IMAGES/Slide%2016_9%20-%205.jpg)
+![Slide 6](./README%20IMAGES/Slide%2016_9%20-%206.jpg)
+![Slide 7](./README%20IMAGES/Slide%2016_9%20-%207.jpg)
+
 This is a production-ready backend for [tldraw sync](https://tldraw.dev/docs/sync).
 
 - Your client-side tldraw-based app can be served from anywhere you want.

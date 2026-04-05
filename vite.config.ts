@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => {
 			__BACKEND_ORIGIN__: JSON.stringify(backendOrigin),
 		},
 		plugins: [react()],
+		build: {
+			outDir: 'dist/client',
+		},
 		server: {
 			host: true,
 			proxy: {
