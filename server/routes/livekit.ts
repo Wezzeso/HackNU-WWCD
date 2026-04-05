@@ -76,6 +76,7 @@ function parseParticipantMetadata(metadata?: string) {
 			userId?: string
 			userName?: string
 			userColor?: string
+			userAvatar?: string
 		}
 	} catch {
 		return {}
@@ -173,6 +174,7 @@ router.get('/participants/:roomId', async (req, res) => {
 						userId: metadata.userId || participant.identity,
 						userName: participant.name || metadata.userName || participant.identity,
 						userColor: metadata.userColor || DEFAULT_USER_COLOR,
+						userAvatar: metadata.userAvatar || null,
 						isMuted: microphoneTrack ? microphoneTrack.muted : true,
 						joinedAtMs: Number(participant.joinedAtMs || participant.joinedAt || 0n),
 					}

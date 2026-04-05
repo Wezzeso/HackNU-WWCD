@@ -91,6 +91,31 @@ export function MusicPlayer({ roomId, userId, userName, isOpen }: MusicPlayerPro
 		setLocalStorageItem(muteStorageKey, String(isMuted))
 	}, [isMuted, muteStorageKey])
 
+	useEffect(() => {
+		const handleMusicControl = (e: Event) => {
+			const customEvent = e as CustomEvent<{ action: 'play' | 'pause' | 'skip' | 'volume'; value?: number }>
+			if (!customEvent.detail) return
+
+			const { action, value } = customEvent.detail
+			if (action === 'play' || action === 'pause') {
+				// We can just call togglePlayPause for both play/pause requests since they're mostly binary toggles dynamically matching user intent.
+				togglePlayPause()
+			} else if (action === 'skip') {
+				skip()
+			} else if (action === 'volume' && typeof value === 'number') {
+				const clamped = Math.max(0, Math.min(100, value))
+				setLocalVolume(clamped)
+				if (clamped > 0) {
+					lastVolumeBeforeMuteRef.current = clamped
+				}
+				setIsMuted(clamped === 0)
+			}
+		}
+
+		window.addEventListener('hacknu:music-control', handleMusicControl)
+		return () => window.removeEventListener('hacknu:music-control', handleMusicControl)
+	}, [togglePlayPause, skip])
+
 	const sendPlayerCommand = (func: string, args: unknown[] = []) => {
 		const target = iframeRef.current?.contentWindow
 		if (!target) return

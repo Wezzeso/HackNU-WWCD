@@ -136,6 +136,8 @@ function buildBoardContext(editor: Editor | null) {
 function getUserIdentity() {
 	let userId = getLocalStorageItem('user-id')
 	let userName = getLocalStorageItem('user-name')
+	let userEmail = getLocalStorageItem('user-email')
+	let userAvatar = getLocalStorageItem('user-avatar')
 
 	if (!userId) {
 		userId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
@@ -145,8 +147,12 @@ function getUserIdentity() {
 		userName = `User ${userId.slice(-4)}`
 		setLocalStorageItem('user-name', userName)
 	}
+	if (!userEmail) {
+		userEmail = 'hacknu@workspace.so'
+		setLocalStorageItem('user-email', userEmail)
+	}
 
-	return { userId, userName, userColor: getUserColor(userId) }
+	return { userId, userName, userEmail, userAvatar: userAvatar || null, userColor: getUserColor(userId) }
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -523,6 +529,8 @@ export function Room() {
 			roomId={roomId}
 			userId={identity.userId}
 			userName={identity.userName}
+			userEmail={identity.userEmail}
+			userAvatar={identity.userAvatar}
 			userColor={identity.userColor}
 			getBoardContext={() => buildBoardContext(editorRef)}
 			activeUsers={activeUsers}
@@ -597,6 +605,8 @@ function RoomWrapper({
 	roomId,
 	userId,
 	userName,
+	userEmail,
+	userAvatar,
 	userColor,
 	getBoardContext,
 	activeUsers,
@@ -613,6 +623,8 @@ function RoomWrapper({
 	roomId?: string
 	userId: string
 	userName: string
+	userEmail: string
+	userAvatar: string | null
 	userColor: string
 	getBoardContext: () => string
 	activeUsers: Array<{ userId: string; userName: string; color: string }>
@@ -661,6 +673,8 @@ function RoomWrapper({
 
 	const generateAndPlaceImageOnCanvas = useCallback(async (prompt: string) => {
 		if (!canvasEditor) return
+		const { getModelConfig } = await import('../components/ModelSettings')
+		if (!getModelConfig().enabled) return
 
 		// Abort previous generation if any
 		if (imageGenerationAbortControllerRef.current) {
@@ -957,6 +971,17 @@ function RoomWrapper({
 			if (videoUrl) {
 				onPlaceTextOnCanvas(`Video ready:\n${videoUrl}`, suggestion.title)
 			}
+			return
+		}
+
+		if (suggestion.type === 'text' && typeof suggestion.data?.text === 'string') {
+			onPlaceTextOnCanvas(suggestion.data.text, suggestion.title)
+			return
+		}
+
+		if (suggestion.type === 'music' && suggestion.data) {
+			window.dispatchEvent(new CustomEvent('hacknu:music-control', { detail: suggestion.data }))
+			return
 		}
 	}, [
 		addCalendarEventFromSuggestion,
@@ -969,12 +994,11 @@ function RoomWrapper({
 
 	const handleVoiceTranscript = useCallback((text: string) => {
 		agent.analyzeText(text, getBoardContext())
-		queueAutoImagePrompt(text, 'audio')
-	}, [agent, getBoardContext, queueAutoImagePrompt])
+	}, [agent, getBoardContext])
 
 	const handleTextImagePrompt = useCallback((text: string) => {
-		queueAutoImagePrompt(text, 'text')
-	}, [queueAutoImagePrompt])
+		agent.analyzeText(text, getBoardContext())
+	}, [agent, getBoardContext])
 
 	useEffect(() => {
 		leftPanelWidthRef.current = leftPanelWidth
@@ -1145,6 +1169,8 @@ function RoomWrapper({
 						currentRoomId={currentRoomId}
 						userId={userId}
 						userName={userName}
+						userEmail={userEmail}
+						userAvatar={userAvatar}
 						userColor={userColor}
 						activeUsers={allActiveUsers}
 						pages={pages.map((page) => ({ id: String(page.id), name: page.name }))}
@@ -1188,6 +1214,7 @@ function RoomWrapper({
 								userId={userId}
 								userName={userName}
 								userColor={userColor}
+								userAvatar={userAvatar}
 								isOpen
 								onClose={() => { }}
 								agentSuggestions={agent.suggestions}

@@ -5,12 +5,14 @@ import { getLocalStorageItem, setLocalStorageItem } from '../localStorage'
 const MODEL_STORAGE_KEY = 'hacknu-model-settings'
 
 export interface ModelConfig {
+	enabled: boolean
 	llm: string
 	image: string
 	video: string
 }
 
 const DEFAULT_MODELS: ModelConfig = {
+	enabled: true,
 	llm: 'gemini-2.5-flash',
 	image: 'reve',
 	video: 'nano-banana-2',
@@ -43,6 +45,7 @@ export function getModelConfig(): ModelConfig {
 
 function saveModelConfig(config: ModelConfig) {
 	setLocalStorageItem(MODEL_STORAGE_KEY, JSON.stringify(config))
+	window.dispatchEvent(new CustomEvent('hacknu:model-config-changed'))
 }
 
 interface ModelSettingsProps {
@@ -53,7 +56,7 @@ interface ModelSettingsProps {
 export function ModelSettings({ isOpen, onClose }: ModelSettingsProps) {
 	const [config, setConfig] = useState<ModelConfig>(() => getModelConfig())
 
-	const updateConfig = (key: keyof ModelConfig, value: string) => {
+	const updateConfig = (key: keyof ModelConfig, value: string | boolean) => {
 		const next = { ...config, [key]: value }
 		setConfig(next)
 		saveModelConfig(next)
@@ -78,6 +81,18 @@ export function ModelSettings({ isOpen, onClose }: ModelSettingsProps) {
 
 				<div className="model-settings__body">
 					<div className="model-settings__group">
+						<label className="model-settings__label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+							<input
+								type="checkbox"
+								checked={config.enabled}
+								onChange={(e) => updateConfig('enabled', e.target.checked)}
+								style={{ margin: 0, cursor: 'pointer' }}
+							/>
+							AI Assistant Enabled
+						</label>
+					</div>
+
+					<div className="model-settings__group" style={{ opacity: config.enabled ? 1 : 0.5, pointerEvents: config.enabled ? 'auto' : 'none' }}>
 						<label className="model-settings__label">LLM (Text Generation)</label>
 						<select
 							className="model-settings__select"
@@ -90,7 +105,7 @@ export function ModelSettings({ isOpen, onClose }: ModelSettingsProps) {
 						</select>
 					</div>
 
-					<div className="model-settings__group">
+					<div className="model-settings__group" style={{ opacity: config.enabled ? 1 : 0.5, pointerEvents: config.enabled ? 'auto' : 'none' }}>
 						<label className="model-settings__label">Image Generation</label>
 						<select
 							className="model-settings__select"
@@ -103,7 +118,7 @@ export function ModelSettings({ isOpen, onClose }: ModelSettingsProps) {
 						</select>
 					</div>
 
-					<div className="model-settings__group">
+					<div className="model-settings__group" style={{ opacity: config.enabled ? 1 : 0.5, pointerEvents: config.enabled ? 'auto' : 'none' }}>
 						<label className="model-settings__label">Video Generation</label>
 						<select
 							className="model-settings__select"

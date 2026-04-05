@@ -10,7 +10,8 @@ import {
 	Volume2,
 } from 'lucide-react'
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type OpenViduParticipant, useOpenViduCall } from '../hooks/useOpenViduCall'
+import { Track } from 'livekit-client'
+import { type CallParticipant, type RemoteTrackEntry, useLiveKitCall } from '../hooks/useLiveKitCall'
 import { useVoiceTranscription } from '../hooks/useVoiceTranscription'
 import './VoiceVideoPanel.css'
 
@@ -19,6 +20,7 @@ interface VoiceVideoPanelProps {
 	userId: string
 	userName: string
 	userColor: string
+	userAvatar?: string | null
 	onTranscript?: (text: string) => void
 }
 
@@ -27,12 +29,14 @@ export function VoiceVideoPanel({
 	userId,
 	userName,
 	userColor,
+	userAvatar,
 	onTranscript,
 }: VoiceVideoPanelProps) {
 	const {
-		localStream,
-		subscribers,
 		participants,
+		remoteTracks,
+		localVideoTrack,
+		localScreenTrack,
 		callMode,
 		isInCall,
 		isJoining,
@@ -40,12 +44,13 @@ export function VoiceVideoPanel({
 		isCameraOff,
 		isScreenSharing,
 		error,
+		status: liveStatus,
 		joinCall,
 		leaveCall,
 		toggleMute,
 		toggleCamera,
 		toggleScreenShare,
-	} = useOpenViduCall(roomId, userId, userName, userColor)
+	} = useLiveKitCall(roomId, userId, userName, userColor, userAvatar)
 
 	const handleTranscript = useCallback((text: string) => {
 		onTranscript?.(text)
@@ -59,7 +64,6 @@ export function VoiceVideoPanel({
 
 	const [isExpanded, setIsExpanded] = useState(false)
 	const containerRef = useRef<HTMLDivElement>(null)
-	const localVideoRef = useRef<HTMLVideoElement>(null)
 
 	useEffect(() => {
 		if (!isExpanded) return
@@ -69,26 +73,26 @@ export function VoiceVideoPanel({
 				setIsExpanded(false)
 			}
 		}
-
 		window.addEventListener('mousedown', handlePointerDown)
 		return () => window.removeEventListener('mousedown', handlePointerDown)
 	}, [isExpanded])
 
-	useEffect(() => {
-		if (!localVideoRef.current) return
-		localVideoRef.current.srcObject = localStream
-	}, [localStream])
+	const visiblePreviewParticipants = participants.slice(0, 4)
+	const remainingPreviewCount = Math.max(0, participants.length - visiblePreviewParticipants.length)
+	
+	const remoteVideoTracks = useMemo(() => 
+		remoteTracks.filter(t => t.source === Track.Source.Camera || t.source === Track.Source.ScreenShare),
+	[remoteTracks])
+	
+	const remoteAudioTracks = useMemo(() => 
+		remoteTracks.filter(t => t.source === Track.Source.Microphone),
+	[remoteTracks])
 
-	const callParticipants = useMemo(
-		() => participants ?? [],
-		[participants]
-	)
-	const visiblePreviewParticipants = callParticipants.slice(0, 4)
-	const remainingPreviewCount = Math.max(0, callParticipants.length - visiblePreviewParticipants.length)
-	const hasRemoteVideo = subscribers.some((subscriber) => subscriber.stream.videoActive || subscriber.stream.typeOfVideo === 'SCREEN')
-	const showVideoStage = callMode === 'video' || hasRemoteVideo || isScreenSharing
+	const hasRemoteVideo = remoteVideoTracks.length > 0
+	const showVideoStage = callMode === 'video' || hasRemoteVideo || localScreenTrack || localVideoTrack
+	
 	const status = isJoining
-		? 'Joining room call...'
+		? liveStatus || 'Joining room call...'
 		: isInCall
 			? callMode === 'video'
 				? 'Live in room call with video.'
@@ -136,7 +140,7 @@ export function VoiceVideoPanel({
 						{visiblePreviewParticipants.length > 0 ? (
 							visiblePreviewParticipants.map((participant, index) => (
 								<ParticipantAvatar
-									key={participant.connectionId}
+									key={participant.participantId}
 									participant={participant}
 									className="voice-chat__pill-avatar"
 									style={{ zIndex: visiblePreviewParticipants.length - index }}
@@ -147,7 +151,7 @@ export function VoiceVideoPanel({
 						)}
 					</div>
 					<span className="voice-chat__pill-count">
-						{remainingPreviewCount > 0 ? `+${remainingPreviewCount}` : callParticipants.length || '0'}
+						{remainingPreviewCount > 0 ? `+${remainingPreviewCount}` : participants.length || '0'}
 					</span>
 					<ChevronDown size={16} className={`voice-chat__pill-chevron ${isExpanded ? 'voice-chat__pill-chevron--open' : ''}`} />
 				</button>
@@ -166,22 +170,22 @@ export function VoiceVideoPanel({
 				<div className="voice-chat__panel-inner">
 					<div className="voice-chat__panel-body">
 						<div className="voice-chat__participants">
-							{callParticipants.length > 0 ? (
-								callParticipants.map((participant, index) => (
+							{participants.length > 0 ? (
+								participants.map((participant, index) => (
 									<div
-										key={participant.connectionId}
+										key={participant.participantId}
 										className="voice-chat__participant"
 										style={{ '--voice-stagger': `${50 + index * 28}ms` } as CSSProperties}
 									>
 										<ParticipantAvatar participant={participant} className="voice-chat__participant-avatar" />
-										{participant.audioActive && index < 2 ? (
+										{!participant.isMuted && index < 2 ? (
 											<span className="voice-chat__participant-badge">
 												<Mic size={10} />
 											</span>
 										) : null}
 										<span>{participant.isLocal ? 'You' : participant.userName}</span>
 										<span className="voice-chat__participant-meta">
-											{participant.videoActive || participant.screenShare ? 'Video on' : participant.audioActive ? 'Audio only' : 'Muted'}
+											{participant.isMuted ? 'Muted' : participant.isSpeaking ? 'Speaking' : 'Audio on'}
 										</span>
 									</div>
 								))
@@ -205,26 +209,26 @@ export function VoiceVideoPanel({
 						{showVideoStage ? (
 							<div className="voice-chat__stage">
 								<div className="voice-chat__stage-grid">
-									<div className="voice-chat__tile voice-chat__tile--local">
-										<video
-											ref={localVideoRef}
-											autoPlay
-											muted
-											playsInline
-											className={`voice-chat__tile-video ${callMode !== 'video' || (isCameraOff && !isScreenSharing) ? 'voice-chat__tile-video--hidden' : ''}`}
+									{(localVideoTrack || callMode === 'video') && (
+										<LocalMediaTile
+											track={localVideoTrack}
+											participant={participants.find(p => p.isLocal)}
+											isMutedCamera={isCameraOff}
+											isScreen={false}
 										/>
-										{callMode !== 'video' || (isCameraOff && !isScreenSharing) ? (
-											<div className="voice-chat__tile-avatar" style={{ background: userColor }}>
-												{userName.charAt(0).toUpperCase()}
-											</div>
-										) : null}
-										<div className="voice-chat__tile-name">
-											You {isScreenSharing ? '(Screen)' : ''}
-										</div>
-									</div>
-									{subscribers.map((subscriber) => (
-										<PeerMediaTile key={subscriber.stream.streamId} subscriber={subscriber} />
-									))}
+									)}
+									{localScreenTrack && (
+										<LocalMediaTile
+											track={localScreenTrack}
+											participant={participants.find(p => p.isLocal)}
+											isMutedCamera={false}
+											isScreen={true}
+										/>
+									)}
+									{remoteVideoTracks.map((entry) => {
+										const peer = participants.find(p => p.participantId === entry.participantId)
+										return <PeerMediaTile key={entry.id} trackEntry={entry} participant={peer} />
+									})}
 								</div>
 							</div>
 						) : null}
@@ -301,8 +305,8 @@ export function VoiceVideoPanel({
 			</div>
 
 			<div className="voice-chat__hidden-media">
-				{subscribers.map((subscriber) => (
-					<HiddenPeerAudio key={subscriber.stream.streamId} subscriber={subscriber} />
+				{remoteAudioTracks.map((entry) => (
+					<HiddenAudioTrack key={entry.id} trackEntry={entry} />
 				))}
 			</div>
 		</div>
@@ -314,7 +318,7 @@ function ParticipantAvatar({
 	className,
 	style,
 }: {
-	participant: OpenViduParticipant
+	participant: CallParticipant
 	className: string
 	style?: CSSProperties
 }) {
@@ -324,67 +328,91 @@ function ParticipantAvatar({
 			style={{ background: participant.userColor, ...style }}
 			title={participant.userName}
 		>
-			{participant.userName.charAt(0).toUpperCase()}
+			{participant.userAvatar ? (
+				<img src={participant.userAvatar} alt={participant.userName} className="size-full object-cover rounded-full" />
+			) : (
+				participant.userName.charAt(0).toUpperCase()
+			)}
 		</div>
 	)
 }
 
-function PeerMediaTile({ subscriber }: { subscriber: { stream: { getMediaStream: () => MediaStream; videoActive: boolean; typeOfVideo?: string; connection: { data: string } } } }) {
+function LocalMediaTile({ track, participant, isMutedCamera, isScreen }: { track: Track | null; participant?: CallParticipant; isMutedCamera: boolean; isScreen: boolean }) {
 	const videoRef = useRef<HTMLVideoElement>(null)
-	const meta = useMemo(() => parseSubscriberMeta(subscriber.stream.connection.data), [subscriber])
 
 	useEffect(() => {
-		if (!videoRef.current) return
-		videoRef.current.srcObject = subscriber.stream.getMediaStream()
-	}, [subscriber])
+		if (videoRef.current && track) {
+			track.attach(videoRef.current)
+		}
+		return () => {
+			if (videoRef.current && track) {
+				track.detach(videoRef.current)
+			}
+		}
+	}, [track])
 
 	return (
-		<div className="voice-chat__tile">
+		<div className="voice-chat__tile voice-chat__tile--local">
 			<video
 				ref={videoRef}
-				autoPlay
-				playsInline
-				className={`voice-chat__tile-video ${!subscriber.stream.videoActive && subscriber.stream.typeOfVideo !== 'SCREEN' ? 'voice-chat__tile-video--hidden' : ''}`}
+				className={`voice-chat__tile-video ${isMutedCamera && !isScreen ? 'voice-chat__tile-video--hidden' : ''}`}
 			/>
-			{!subscriber.stream.videoActive && subscriber.stream.typeOfVideo !== 'SCREEN' ? (
-				<div className="voice-chat__tile-avatar" style={{ background: meta.userColor }}>
-					{meta.userName.charAt(0).toUpperCase()}
+			{isMutedCamera && !isScreen ? (
+				<div className="voice-chat__tile-avatar" style={{ background: participant?.userColor || '#64748b' }}>
+					{participant?.userName?.charAt(0).toUpperCase() || 'Y'}
 				</div>
 			) : null}
 			<div className="voice-chat__tile-name">
-				{meta.userName} {subscriber.stream.typeOfVideo === 'SCREEN' ? '(Screen)' : ''}
+				You {isScreen ? '(Screen)' : ''}
 			</div>
 		</div>
 	)
 }
 
-function HiddenPeerAudio({ subscriber }: { subscriber: { stream: { getMediaStream: () => MediaStream } } }) {
+function PeerMediaTile({ trackEntry, participant }: { trackEntry: RemoteTrackEntry; participant?: CallParticipant }) {
+	const videoRef = useRef<HTMLVideoElement>(null)
+	const isScreen = trackEntry.source === Track.Source.ScreenShare
+
+	useEffect(() => {
+		if (videoRef.current && trackEntry.track) {
+			trackEntry.track.attach(videoRef.current)
+		}
+		return () => {
+			if (videoRef.current && trackEntry.track) {
+				trackEntry.track.detach(videoRef.current)
+			}
+		}
+	}, [trackEntry.track])
+
+	const userName = participant ? participant.userName : 'Peer'
+	const userColor = participant ? participant.userColor : '#64748b'
+
+	return (
+		<div className="voice-chat__tile">
+			<video
+				ref={videoRef}
+				className={`voice-chat__tile-video`}
+			/>
+			<div className="voice-chat__tile-name">
+				{userName} {isScreen ? '(Screen)' : ''}
+			</div>
+		</div>
+	)
+}
+
+function HiddenAudioTrack({ trackEntry }: { trackEntry: RemoteTrackEntry }) {
 	const audioRef = useRef<HTMLAudioElement>(null)
 
 	useEffect(() => {
-		if (!audioRef.current) return
-		audioRef.current.srcObject = subscriber.stream.getMediaStream()
-	}, [subscriber])
-
-	return <audio ref={audioRef} autoPlay playsInline />
-}
-
-function parseSubscriberMeta(data: string) {
-	const chunks = data.split('%/%').reverse()
-	for (const chunk of chunks) {
-		try {
-			const parsed = JSON.parse(chunk) as { userName?: string; userColor?: string }
-			return {
-				userName: parsed.userName || 'Peer',
-				userColor: parsed.userColor || '#64748b',
-			}
-		} catch {
-			// Ignore non-JSON parts.
+		if (audioRef.current && trackEntry.track) {
+			trackEntry.track.attach(audioRef.current)
 		}
-	}
+		return () => {
+			if (audioRef.current && trackEntry.track) {
+				trackEntry.track.detach(audioRef.current)
+			}
+		}
+	}, [trackEntry.track])
 
-	return {
-		userName: 'Peer',
-		userColor: '#64748b',
-	}
+	return <audio ref={audioRef} />
 }

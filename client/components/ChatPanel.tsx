@@ -8,6 +8,7 @@ interface ChatPanelProps {
 	userId: string
 	userName: string
 	userColor: string
+	userAvatar?: string | null
 	isOpen: boolean
 	onClose: () => void
 	agentSuggestions?: AgentSuggestion[]
@@ -29,7 +30,7 @@ type TimelineItem =
 	| { kind: 'suggestion'; data: AgentSuggestion; ts: number }
 
 export function ChatPanel({
-	roomId, userId, userName, userColor,
+	roomId, userId, userName, userColor, userAvatar,
 	isOpen, onClose,
 	agentSuggestions = [],
 	agentMessages = [],
@@ -46,7 +47,7 @@ export function ChatPanel({
 		messages, typingUsers,
 		sendMessage, addReaction, sendTyping,
 		isConnected, unreadCount, resetUnread,
-	} = useChat(roomId, userId, userName, userColor, isOpen)
+	} = useChat(roomId, userId, userName, userColor, userAvatar, isOpen)
 
 	const [input, setInput] = useState('')
 	const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
@@ -162,7 +163,11 @@ export function ChatPanel({
 						<div key={msg.id} className={`chat-message ${isOwn ? 'chat-message--own' : ''}`}>
 							{!isOwn && (
 								<div className="chat-message__avatar" style={{ background: msg.userColor }}>
-									{msg.userName.charAt(0).toUpperCase()}
+									{msg.userAvatar ? (
+										<img src={msg.userAvatar} alt={msg.userName} className="size-full object-cover rounded-full" />
+									) : (
+										msg.userName.charAt(0).toUpperCase()
+									)}
 								</div>
 							)}
 							<div className="chat-message__content">

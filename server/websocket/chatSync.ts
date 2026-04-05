@@ -6,6 +6,7 @@ interface ChatMessage {
 	userId: string
 	userName: string
 	userColor: string
+	userAvatar?: string | null
 	text: string
 	timestamp: number
 	replyTo?: string
@@ -14,7 +15,7 @@ interface ChatMessage {
 }
 
 interface ChatRoom {
-	clients: Map<string, { ws: WebSocket; userName: string; userColor: string }>
+	clients: Map<string, { ws: WebSocket; userName: string; userColor: string; userAvatar?: string | null }>
 	messages: ChatMessage[]
 	typing: Map<string, number> // userId -> timestamp
 }
@@ -60,7 +61,8 @@ export function setupChatSync(ws: WebSocket, roomId: string) {
 					userId = msg.userId || `user-${Date.now()}`
 					const userName = msg.userName || 'Anonymous'
 					const userColor = msg.userColor || `hsl(${Math.random() * 360}, 70%, 50%)`
-					room.clients.set(userId, { ws, userName, userColor })
+					const userAvatar = msg.userAvatar || null
+					room.clients.set(userId, { ws, userName, userColor, userAvatar })
 
 					// Send message history
 					ws.send(JSON.stringify({
@@ -70,6 +72,7 @@ export function setupChatSync(ws: WebSocket, roomId: string) {
 							id,
 							name: c.userName,
 							color: c.userColor,
+							userAvatar: c.userAvatar,
 						})),
 					}))
 
@@ -79,6 +82,7 @@ export function setupChatSync(ws: WebSocket, roomId: string) {
 						userId,
 						userName,
 						userColor,
+						userAvatar,
 					}, userId)
 					break
 				}
@@ -90,6 +94,7 @@ export function setupChatSync(ws: WebSocket, roomId: string) {
 						userId,
 						userName: room.clients.get(userId)?.userName || 'Anonymous',
 						userColor: room.clients.get(userId)?.userColor || '#888',
+						userAvatar: room.clients.get(userId)?.userAvatar || null,
 						text: msg.text,
 						timestamp: Date.now(),
 						replyTo: msg.replyTo,

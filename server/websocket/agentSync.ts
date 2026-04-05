@@ -2,7 +2,7 @@ import { WebSocket } from 'ws'
 
 export interface AgentSuggestion {
 	id: string
-	type: 'calendar' | 'expand' | 'image' | 'video' | 'summary' | 'action'
+	type: 'calendar' | 'expand' | 'image' | 'video' | 'summary' | 'action' | 'text' | 'music'
 	title: string
 	description: string
 	data?: Record<string, unknown>
@@ -14,6 +14,7 @@ interface AgentRoom {
 	clients: Map<string, { ws: WebSocket; userId: string; userName: string }>
 	suggestions: AgentSuggestion[]
 	agentStatus: 'idle' | 'listening' | 'thinking' | 'generating'
+	history: { role: 'user' | 'model'; parts: { text: string }[] }[]
 }
 
 const agentRooms = new Map<string, AgentRoom>()
@@ -25,6 +26,7 @@ function getOrCreateAgentRoom(roomId: string): AgentRoom {
 			clients: new Map(),
 			suggestions: [],
 			agentStatus: 'idle',
+			history: [],
 		}
 		agentRooms.set(roomId, room)
 	}
@@ -84,6 +86,19 @@ export function broadcastAgentMessage(roomId: string, text: string) {
 			timestamp: Date.now(),
 		},
 	})
+}
+
+export function getAgentRoomHistory(roomId: string) {
+	const room = agentRooms.get(roomId)
+	return room ? room.history : []
+}
+
+export function addAgentRoomHistory(roomId: string, role: 'user' | 'model', text: string) {
+	const room = getOrCreateAgentRoom(roomId)
+	room.history.push({ role, parts: [{ text }] })
+	if (room.history.length > 50) {
+		room.history = room.history.slice(-50)
+	}
 }
 
 export function setupAgentSync(ws: WebSocket, roomId: string) {

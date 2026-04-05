@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { VoiceVideoPanel } from './VoiceVideoPanel'
 import { ModelSettings } from './ModelSettings'
 import { KanbanPanel } from './KanbanPanel'
+import { ProfileSettings } from './ProfileSettings'
 import type { AgentStatus } from '../hooks/useAgentSync'
 import './ModelSettings.css'
 
@@ -10,6 +11,8 @@ interface SidebarProps {
 	currentRoomId: string
 	userId: string
 	userName: string
+	userEmail: string
+	userAvatar: string | null
 	userColor: string
 	activeUsers: Array<{ userId: string; userName: string; color: string }>
 	pages: Array<{ id: string; name: string }>
@@ -30,6 +33,8 @@ export function Sidebar({
 	currentRoomId,
 	userId,
 	userName,
+	userEmail,
+	userAvatar,
 	userColor,
 	activeUsers,
 	pages,
@@ -46,20 +51,29 @@ export function Sidebar({
 	lastAutoImageSource,
 }: SidebarProps) {
 	const [showModelSettings, setShowModelSettings] = useState(false)
+	const [showProfileSettings, setShowProfileSettings] = useState(false)
 
 	return (
 		<aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-[#fbfbfa] p-3">
 			<div className="rounded-xl bg-transparent p-2">
 				<div className="flex items-center gap-3">
-					<div
-						className="flex size-11 items-center justify-center rounded-full text-sm font-bold text-white"
+					<button 
+						type="button"
+						onClick={() => setShowProfileSettings(true)}
+						className="flex size-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white transition hover:ring-2 hover:ring-primary/40 focus:outline-none"
 						style={{ background: userColor }}
+						title="Edit Profile"
+						aria-label="Edit Profile"
 					>
-						{userName.charAt(0).toUpperCase()}
-					</div>
+						{userAvatar ? (
+							<img src={userAvatar} alt={userName} className="size-full object-cover" />
+						) : (
+							<span className="text-sm">{userName.charAt(0).toUpperCase()}</span>
+						)}
+					</button>
 					<div className="min-w-0 flex-1">
-						<div className="workspace-title truncate text-[15px] font-semibold text-foreground">{userName}</div>
-						<div className="text-xs text-muted-foreground">hacknu@workspace.so</div>
+						<div className="workspace-title truncate text-[15px] font-semibold text-foreground" title={userName}>{userName}</div>
+						<div className="truncate text-xs text-muted-foreground" title={userEmail}>{userEmail}</div>
 					</div>
 					<button
 						type="button"
@@ -83,6 +97,7 @@ export function Sidebar({
 					userId={userId}
 					userName={userName}
 					userColor={userColor}
+					userAvatar={userAvatar}
 					onTranscript={onVoiceTranscript}
 				/>
 			</div>
@@ -156,6 +171,12 @@ export function Sidebar({
 			</div>
 
 			<ModelSettings isOpen={showModelSettings} onClose={() => setShowModelSettings(false)} />
+			<ProfileSettings
+				isOpen={showProfileSettings}
+				onClose={() => setShowProfileSettings(false)}
+				currentName={userName}
+				currentEmail={userEmail}
+			/>
 		</aside>
 	)
 }

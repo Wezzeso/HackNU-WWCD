@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { broadcastAgentSuggestion, broadcastAgentStatus, broadcastAgentMessage } from '../websocket/agentSync.js'
+import { broadcastAgentSuggestion, broadcastAgentStatus, broadcastAgentMessage, getAgentRoomHistory, addAgentRoomHistory } from '../websocket/agentSync.js'
 
 const router = Router()
 
@@ -18,45 +18,47 @@ router.post('/analyze', async (req, res) => {
 
 		broadcastAgentStatus(roomId, 'thinking')
 
-		const systemPrompt = `You are an AI assistant integrated into a real-time collaboration whiteboard. 
-You analyze conversation transcripts and detect actionable intents.
+		const pHistory = getAgentRoomHistory(roomId)
 
-Your job is to extract ONLY clear, actionable items. Return a JSON array of intents.
+		const systemPrompt = `You are an AI assistant integrated into a real-time collaboration whiteboard. 
+You analyze conversation transcripts and text streams to formulate actionable intents.
+
+Your job is to extract ONLY clear, actionable items and summarize conversation history into bullet points or paragraphs if the user asks for essays, tech task lists, bullet points, diagrams, or general written output.
+Return a JSON array of intents.
 
 Each intent object must have:
-- "type": one of "calendar", "task", "image", "video", "summary"
+- "type": one of "calendar", "task", "image", "video", "text", "music"
 - "title": short title for the action
 - "description": brief description
 - "data": relevant data object
 
 For "calendar" type, data must include:
 { "date": "YYYY-MM-DD", "time": "HH:MM", "tag": "deadline" | "celebration" | "simple" }
-Use "deadline" for due dates, submissions, exams, meetings with due pressure, or anything described as a deadline.
-Use "celebration" for birthdays, anniversaries, holidays, parties, or celebratory events.
-Use "simple" for all other calendar events.
 When the user mentions a birthday, keep the person's name in the title.
 For "task" type, data must include: { "taskText": "short description" }
-For "image" type, data must include: { "prompt": "image generation prompt" }
+For "image" type, data must include: { "prompt": "image generation prompt" } ONLY DO THIS IF THE USER EXPLICITLY ASKS TO 'GENERATE AN IMAGE' OR 'PICTURE'.
 For "video" type, data must include: { "prompt": "video generation prompt" }
-For "summary" type, data can be empty
-
-If there are no actionable items, return an empty array: []
-
-Today's date is ${new Date().toISOString().split('T')[0]}.
-Current year is ${new Date().getFullYear()}.
+For "text" type, data must include: { "text": "The full formatted content (essay, technical checklist, diagram representation, or bullet-point summary of the history) ready to be printed on the canvas." }
+For "music" type, data must include: { "action": "pause" | "play" | "skip" | "volume", "value": number (optional, only for volume 0-100) }
 
 Examples:
 - "deadline for physics project on 2026-04-10 at 18:00" -> calendar with tag "deadline"
-- "Sarah's birthday is May 3" -> calendar with tag "celebration"
+- "summarize what we discussed" -> "text" with a bullet point summary of the conversation history.
+- "create an essay about planets" -> "text" with full essay.
+- "skip this song" -> "music" with action "skip".
+- "set music volume to 50" -> "music" with action "volume", value 50.
 
-Be conservative — only extract items when the intent is clear.
-RESPOND WITH ONLY VALID JSON. No markdown, no explanation.`
+Be precise.
+RESPOND WITH ONLY VALID JSON. No markdown backticks outside of the text data, no explanation.`
 
+		const currentMessageText = `Analyze the user's latest message:\n\n${text}\n\n${context ? `Canvas Context: ${context}` : ''}`
+		
 		const body = {
 			contents: [
+				...pHistory,
 				{
 					role: 'user',
-					parts: [{ text: `Analyze this conversation for actionable items:\n\n${text}\n\n${context ? `Context: ${context}` : ''}` }],
+					parts: [{ text: currentMessageText }],
 				},
 			],
 			systemInstruction: {
@@ -90,7 +92,7 @@ RESPOND WITH ONLY VALID JSON. No markdown, no explanation.`
 		const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
 
 		let intents: Array<{
-			type: 'calendar' | 'task' | 'image' | 'video' | 'summary'
+			type: 'calendar' | 'task' | 'image' | 'video' | 'summary' | 'text' | 'music'
 			title: string
 			description: string
 			data?: Record<string, unknown>
@@ -120,7 +122,7 @@ RESPOND WITH ONLY VALID JSON. No markdown, no explanation.`
 						}
 					: intent.data
 			const suggestion = broadcastAgentSuggestion(roomId, {
-				type: intent.type === 'task' ? 'action' : intent.type,
+				type: intent.type === 'task' ? 'action' : intent.type as any,
 				title: intent.title,
 				description: intent.description,
 				data: normalizedData,
@@ -129,6 +131,10 @@ RESPOND WITH ONLY VALID JSON. No markdown, no explanation.`
 		}
 
 		broadcastAgentStatus(roomId, 'idle')
+
+		// Store history
+		addAgentRoomHistory(roomId, 'user', text)
+		addAgentRoomHistory(roomId, 'model', rawText)
 
 		res.json({ intents: suggestions })
 	} catch (err) {

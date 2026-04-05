@@ -7,6 +7,7 @@ export interface ChatMessage {
 	userId: string
 	userName: string
 	userColor: string
+	userAvatar?: string | null
 	text: string
 	timestamp: number
 	replyTo?: string
@@ -18,6 +19,7 @@ export interface OnlineUser {
 	id: string
 	name: string
 	color: string
+	userAvatar?: string | null
 }
 
 interface UseChatReturn {
@@ -34,7 +36,7 @@ interface UseChatReturn {
 	resetUnread: () => void
 }
 
-export function useChat(roomId: string, userId: string, userName: string, userColor: string, isPanelOpen: boolean): UseChatReturn {
+export function useChat(roomId: string, userId: string, userName: string, userColor: string, userAvatar: string | null | undefined, isPanelOpen: boolean): UseChatReturn {
 	const [messages, setMessages] = useState<ChatMessage[]>([])
 	const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([])
 	const [typingUsers, setTypingUsers] = useState<string[]>([])
@@ -87,7 +89,7 @@ export function useChat(roomId: string, userId: string, userName: string, userCo
 					}
 					reconnectAttemptRef.current = 0
 					setIsConnected(true)
-					ws.send(JSON.stringify({ type: 'join', userId, userName, userColor }))
+					ws.send(JSON.stringify({ type: 'join', userId, userName, userColor, userAvatar }))
 				}
 
 				ws.onmessage = (event) => {
@@ -111,6 +113,7 @@ export function useChat(roomId: string, userId: string, userName: string, userCo
 								id: msg.userId,
 								name: msg.userName,
 								color: msg.userColor,
+								userAvatar: msg.userAvatar,
 							}])
 							break
 

@@ -34,6 +34,7 @@ import {
 	Triangle,
 } from 'lucide-react'
 import { expandDocument } from '../utils/canvasAI'
+import { getModelConfig } from './ModelSettings'
 import {
 	REACTION_STAMP_DEFS,
 	STAMP_TOOL_ID,
@@ -134,6 +135,15 @@ export function TldrawContextualToolbar() {
 	)
 	const [isExpanding, setIsExpanding] = useState(false)
 	const [agentCommand, setAgentCommand] = useState('')
+	const [isAiEnabled, setIsAiEnabled] = useState(() => getModelConfig().enabled)
+
+	useEffect(() => {
+		const handleConfigChanged = () => {
+			setIsAiEnabled(getModelConfig().enabled)
+		}
+		window.addEventListener('hacknu:model-config-changed', handleConfigChanged)
+		return () => window.removeEventListener('hacknu:model-config-changed', handleConfigChanged)
+	}, [])
 
 	const currentToolId = useValue('current tool id', () => editor.getCurrentToolId(), [editor])
 	const currentGeo = useValue(
@@ -464,7 +474,7 @@ export function TldrawContextualToolbar() {
 			) : null}
 
 			{/* Expand with AI button for select mode with short text */}
-			{activeMode === 'select' && expandableText && (
+			{isAiEnabled && activeMode === 'select' && expandableText && (
 				<div className="tldraw-contextual-toolbar__stylebar">
 					<button
 						className="tldraw-contextual-toolbar__expand-btn"
@@ -479,6 +489,7 @@ export function TldrawContextualToolbar() {
 			)}
 
 			{/* Simple Command Input for AI */}
+			{isAiEnabled && (
 			<div className="tldraw-contextual-toolbar__stylebar" style={{ padding: '0 8px', marginBottom: '8px' }}>
 				<form 
 					className="flex w-full items-center gap-2 rounded-md bg-white px-2 py-1 shadow-sm ring-1 ring-black/5"
@@ -507,6 +518,7 @@ export function TldrawContextualToolbar() {
 					</button>
 				</form>
 			</div>
+			)}
 
 			<TldrawUiToolbar
 				className="tldraw-contextual-toolbar__mainbar"

@@ -20,7 +20,6 @@ import { telegramRoutes } from './routes/telegram.js'
 import { unfurlRoutes } from './routes/unfurl.js'
 import { livekitRoutes } from './routes/livekit.js'
 import { agentVoiceRoutes } from './routes/agentVoice.js'
-import { openviduRoutes } from './routes/openvidu.js'
 
 dotenv.config()
 
@@ -43,7 +42,6 @@ app.use('/api/telegram', telegramRoutes)
 app.use('/api/unfurl', unfurlRoutes)
 app.use('/api/livekit', livekitRoutes)
 app.use('/api/agent', agentVoiceRoutes)
-app.use('/api/openvidu', openviduRoutes)
 
 // Health check
 app.get('/api/health', (_req, res) => {

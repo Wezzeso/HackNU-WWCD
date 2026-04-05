@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { resolveWsUrl } from '../utils/network'
+import { getModelConfig } from '../components/ModelSettings'
 
 export interface AgentSuggestion {
 	id: string
-	type: 'calendar' | 'expand' | 'image' | 'video' | 'summary' | 'action'
+	type: 'calendar' | 'expand' | 'image' | 'video' | 'summary' | 'action' | 'text' | 'music'
 	title: string
 	description: string
 	data?: Record<string, unknown>
@@ -39,13 +40,29 @@ export function useAgentSync(
 	const [messages, setMessages] = useState<AgentMessage[]>([])
 	const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
 	const [isConnected, setIsConnected] = useState(false)
+	const [isEnabled, setIsEnabled] = useState(() => getModelConfig().enabled)
 	const wsRef = useRef<WebSocket | null>(null)
 	const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const reconnectAttemptRef = useRef(0)
 	const shouldReconnectRef = useRef(true)
 
 	useEffect(() => {
-		if (!roomId || !userId) return
+		const handleConfigChanged = () => {
+			setIsEnabled(getModelConfig().enabled)
+		}
+		window.addEventListener('hacknu:model-config-changed', handleConfigChanged)
+		return () => window.removeEventListener('hacknu:model-config-changed', handleConfigChanged)
+	}, [])
+
+	useEffect(() => {
+		if (!roomId || !userId || !isEnabled) {
+			if (wsRef.current) {
+				wsRef.current.close()
+				wsRef.current = null
+				setIsConnected(false)
+			}
+			return
+		}
 
 		let disposed = false
 		let activeSocket: WebSocket | null = null
@@ -151,7 +168,7 @@ export function useAgentSync(
 				wsRef.current = null
 			}
 		}
-	}, [roomId, userId, userName])
+	}, [roomId, userId, userName, isEnabled])
 
 	const approveSuggestion = useCallback((suggestionId: string) => {
 		if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -172,6 +189,7 @@ export function useAgentSync(
 	}, [])
 
 	const analyzeText = useCallback(async (text: string, context?: string) => {
+		if (!getModelConfig().enabled) return
 		console.log('[agent-sync] analyzeText called, roomId:', roomId, 'text:', text.slice(0, 80))
 		try {
 			const res = await fetch('/api/agent/analyze', {
@@ -188,6 +206,7 @@ export function useAgentSync(
 	}, [roomId])
 
 	const expandDocument = useCallback(async (text: string): Promise<string> => {
+		if (!getModelConfig().enabled) return ''
 		try {
 			const res = await fetch('/api/agent/expand', {
 				method: 'POST',
