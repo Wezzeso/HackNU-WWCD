@@ -95,13 +95,18 @@ server.on('upgrade', (request, socket, head) => {
 // Serve static uploads
 app.use('/uploads', express.static('uploads'))
 
-// In production, serve the built client
-if (process.env.NODE_ENV === 'production') {
-	app.use(express.static('dist/client'))
-	app.get('*', (_req, res) => {
-		res.sendFile('index.html', { root: 'dist/client' })
-	})
-}
+// Always serve the built client, since we only run the compiled JS in a production-like environment
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const clientPath = path.join(__dirname, '../client')
+
+app.use(express.static(clientPath))
+app.get('*', (_req, res) => {
+	res.sendFile(path.join(clientPath, 'index.html'))
+})
 
 const PORT = parseInt(process.env.PORT || '3001', 10)
 server.listen(PORT, () => {
