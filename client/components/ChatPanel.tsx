@@ -114,7 +114,7 @@ export function ChatPanel({
 				return lines.filter(Boolean).join('\n')
 			})()
 
-			if (summaryText) {
+			if (summaryText && (suggestion.type === 'summary' || suggestion.type === 'expand')) {
 				onPlaceTextOnCanvas?.(summaryText, suggestion.title)
 			}
 

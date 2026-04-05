@@ -1,6 +1,5 @@
 import { FileStack, Plus, Settings2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { ImageGeneratorPanel } from './ImageGeneratorPanel'
 import { VoiceVideoPanel } from './VoiceVideoPanel'
 import { ModelSettings } from './ModelSettings'
 import { KanbanPanel } from './KanbanPanel'
@@ -47,7 +46,6 @@ export function Sidebar({
 	lastAutoImageSource,
 }: SidebarProps) {
 	const [showModelSettings, setShowModelSettings] = useState(false)
-	const [showImageGenerator, setShowImageGenerator] = useState(false)
 
 	return (
 		<aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-[#fbfbfa] p-3">
@@ -63,13 +61,6 @@ export function Sidebar({
 						<div className="workspace-title truncate text-[15px] font-semibold text-foreground">{userName}</div>
 						<div className="text-xs text-muted-foreground">hacknu@workspace.so</div>
 					</div>
-					<button
-						type="button"
-						onClick={() => setShowImageGenerator(true)}
-						className="rounded-lg border border-border/70 bg-white px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-secondary"
-					>
-						Image AI
-					</button>
 					<button
 						type="button"
 						onClick={() => setShowModelSettings(true)}
@@ -165,15 +156,6 @@ export function Sidebar({
 			</div>
 
 			<ModelSettings isOpen={showModelSettings} onClose={() => setShowModelSettings(false)} />
-			<ImageGeneratorPanel
-				isOpen={showImageGenerator}
-				onClose={() => setShowImageGenerator(false)}
-				onPlaceImageOnCanvas={onPlaceImageOnCanvas}
-				autoGenerateEnabled={autoGenerateImages}
-				onAutoGenerateChange={onAutoGenerateImagesChange}
-				lastAutoPrompt={lastAutoImagePrompt}
-				lastAutoSource={lastAutoImageSource}
-			/>
 		</aside>
 	)
 }

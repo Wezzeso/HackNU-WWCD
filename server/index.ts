@@ -12,6 +12,7 @@ import { setupAgentSync } from './websocket/agentSync.js'
 import { assetRoutes } from './routes/assets.js'
 import { boardGenerateRoutes } from './routes/boardGenerate.js'
 import { geminiRoutes } from './routes/gemini.js'
+import { geminiImageRoutes } from './routes/geminiImage.js'
 import { handwritingRoutes } from './routes/handwriting.js'
 import { higgsFieldRoutes } from './routes/higgsfield.js'
 import { calendarRoutes } from './routes/calendar.js'
@@ -34,6 +35,7 @@ app.use(express.json({ limit: '50mb' }))
 app.use('/api/uploads', assetRoutes)
 app.use('/api/ai/board-generate', boardGenerateRoutes)
 app.use('/api/ai/gemini', geminiRoutes)
+app.use('/api/ai/gemini-image', geminiImageRoutes)
 app.use('/api/ai/handwriting', handwritingRoutes)
 app.use('/api/ai/higgsfield', higgsFieldRoutes)
 app.use('/api/calendar', calendarRoutes)

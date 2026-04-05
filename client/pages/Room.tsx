@@ -14,6 +14,7 @@ import {
 } from 'react'
 import { useParams } from 'react-router-dom'
 import {
+	AssetRecordType,
 	Editor,
 	TLShape,
 	Tldraw,
@@ -27,7 +28,6 @@ import { getBookmarkPreview } from '../getBookmarkPreview'
 import { multiplayerAssetStore } from '../multiplayerAssetStore'
 import { Sidebar } from '../components/Sidebar'
 import { TldrawContextualToolbar } from '../components/TldrawContextualToolbar'
-import { getModelConfig } from '../components/ModelSettings'
 import { getLocalStorageItem, setLocalStorageItem } from '../localStorage'
 import { ReactionStampShapeUtil } from '../tldraw/ReactionStampShapeUtil'
 import { StampTool } from '../tldraw/StampTool'
@@ -36,7 +36,6 @@ import { getUserColor } from '../utils/supabase'
 import { getTldrawAssetUrls } from '../utils/tldrawAssets'
 import { useAgentSync, type AgentSuggestion } from '../hooks/useAgentSync'
 import { useBoardConcierge } from '../hooks/useBoardConcierge'
-import { useImageGeneration } from '../hooks/useImageGeneration'
 import { useVideoGeneration } from '../hooks/useVideoGeneration'
 
 type PageId = ReturnType<Editor['getCurrentPageId']>
@@ -453,19 +452,40 @@ export function Room() {
 			const viewportBounds = editorRef.getViewportPageBounds()
 			const imageWidth = clamp(Math.round(viewportBounds.width * 0.42), 320, 760)
 			const imageHeight = Math.round(imageWidth * 0.75)
-			const imageShape = createCanvasImageShape(
-				editorRef.getCurrentPageId(),
-				imageUrl,
-				Math.round(viewportBounds.center.x - imageWidth / 2),
-				Math.round(viewportBounds.center.y - imageHeight / 2),
-				imageWidth,
-				imageHeight,
-				'AI generated image'
-			)
 
+			// Create asset first so tldraw can render the image
+			const assetId = AssetRecordType.createId()
+			editorRef.createAssets([
+				{
+					id: assetId,
+					type: 'image',
+					typeName: 'asset',
+					props: {
+						name: 'ai-generated-image.png',
+						src: imageUrl,
+						w: imageWidth,
+						h: imageHeight,
+						mimeType: 'image/png',
+						isAnimated: false,
+					},
+					meta: {},
+				},
+			])
+
+			const shapeId = createShapeId()
 			editorRef.markHistoryStoppingPoint('placing ai image')
-			editorRef.createShapes([imageShape] as never[])
-			editorRef.select(imageShape.id)
+			editorRef.createShape({
+				id: shapeId,
+				type: 'image',
+				x: Math.round(viewportBounds.center.x - imageWidth / 2),
+				y: Math.round(viewportBounds.center.y - imageHeight / 2),
+				props: {
+					assetId,
+					w: imageWidth,
+					h: imageHeight,
+				},
+			})
+			editorRef.select(shapeId)
 		},
 		[editorRef]
 	)
@@ -527,6 +547,7 @@ export function Room() {
 			}}
 			onPlaceImageOnCanvas={placeImageOnCanvas}
 			onPlaceTextOnCanvas={placeTextOnCanvas}
+			editorRef={editorRef}
 		>
 			<div
 				className="absolute inset-0"
@@ -586,6 +607,7 @@ function RoomWrapper({
 	onDeletePage,
 	onPlaceImageOnCanvas,
 	onPlaceTextOnCanvas,
+	editorRef: canvasEditor,
 }: {
 	children: ReactNode
 	roomId?: string
@@ -601,51 +623,132 @@ function RoomWrapper({
 	onDeletePage: (pageId: PageId) => void
 	onPlaceImageOnCanvas: (imageUrl: string) => void
 	onPlaceTextOnCanvas: (text: string, title?: string) => void
+	editorRef: Editor | null
 }) {
 	const currentRoomId = roomId ?? createRoomId()
 	const agent = useAgentSync(currentRoomId, userId, userName)
-	const { generateImage } = useImageGeneration()
-	const { generateImage: generateAutoImage } = useImageGeneration()
 	const { generateVideo } = useVideoGeneration()
 	const [autoGenerateImages, setAutoGenerateImages] = useState(
 		() => getLocalStorageItem(AUTO_IMAGE_MODE_KEY) !== 'false'
 	)
 	const [lastAutoImagePrompt, setLastAutoImagePrompt] = useState<string | null>(null)
 	const [lastAutoImageSource, setLastAutoImageSource] = useState<AutoImageSource | null>(null)
-	const autoImageQueueRef = useRef<{ prompt: string; source: AutoImageSource } | null>(null)
-	const autoImageProcessingRef = useRef(false)
+	const autoImageDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const imageGenerationAbortControllerRef = useRef<AbortController | null>(null)
 
-	const processAutoImagePrompt = useCallback(async (prompt: string, source: AutoImageSource) => {
-		const trimmedPrompt = prompt.trim().replace(/\s+/g, ' ').slice(0, 900)
-		if (!autoGenerateImages || trimmedPrompt.length < 8) {
-			return
-		}
-
-		autoImageProcessingRef.current = true
-		setLastAutoImagePrompt(trimmedPrompt)
-		setLastAutoImageSource(source)
-
+	const generateGeminiImage = useCallback(async (prompt: string, contextImageUrls: string[], signal?: AbortSignal): Promise<string | null> => {
 		try {
-			const imageUrl = await generateAutoImage(trimmedPrompt, {
-				model: getModelConfig().image,
+			const res = await fetch('/api/ai/gemini-image', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ prompt, contextImageUrls }),
+				signal,
 			})
 
-			if (imageUrl) {
-				onPlaceImageOnCanvas(imageUrl)
+			if (!res.ok) {
+				const data = await res.json().catch(() => null)
+				console.error('[gemini-image] Generation failed:', data?.error || res.statusText)
+				return null
 			}
-		} finally {
-			autoImageProcessingRef.current = false
 
-			const queuedPrompt = autoImageQueueRef.current
-			autoImageQueueRef.current = null
+			const data = await res.json()
+			return data.imageUrl || null
+		} catch (err) {
+			console.error('[gemini-image] Error:', err)
+			return null
+		}
+	}, [])
 
-			if (queuedPrompt && autoGenerateImages) {
-				if (queuedPrompt.prompt !== trimmedPrompt || queuedPrompt.source !== source) {
-					void processAutoImagePrompt(queuedPrompt.prompt, queuedPrompt.source)
+	const generateAndPlaceImageOnCanvas = useCallback(async (prompt: string) => {
+		if (!canvasEditor) return
+
+		// Abort previous generation if any
+		if (imageGenerationAbortControllerRef.current) {
+			imageGenerationAbortControllerRef.current.abort()
+		}
+		const abortController = new AbortController()
+		imageGenerationAbortControllerRef.current = abortController
+		const signal = abortController.signal
+
+		// Extract context images from current selection
+		const contextImageUrls: string[] = []
+		const selectedShapes = canvasEditor.getSelectedShapes()
+		for (const shape of selectedShapes) {
+			if (shape.type === 'image' && 'assetId' in shape.props && shape.props.assetId) {
+				const asset = canvasEditor.getAsset(shape.props.assetId)
+				if (asset && 'src' in asset.props && typeof asset.props.src === 'string') {
+					contextImageUrls.push(asset.props.src)
 				}
 			}
 		}
-	}, [autoGenerateImages, generateAutoImage, onPlaceImageOnCanvas])
+
+		// 1. Immediately place a loading placeholder on the canvas
+		const placeholderId = createShapeId()
+		const viewportBounds = canvasEditor.getViewportPageBounds()
+
+		const placeholderW = clamp(Math.round(viewportBounds.width * 0.42), 320, 760)
+		const placeholderH = Math.round(placeholderW * 0.75)
+		const placeholderX = Math.round(viewportBounds.center.x - placeholderW / 2)
+		const placeholderY = Math.round(viewportBounds.center.y - placeholderH / 2)
+
+		canvasEditor.markHistoryStoppingPoint('ai image placeholder')
+		canvasEditor.createShape({
+			id: placeholderId,
+			type: 'geo',
+			x: placeholderX,
+			y: placeholderY,
+			props: {
+				w: placeholderW,
+				h: placeholderH,
+				geo: 'rectangle',
+				color: 'light-blue',
+				fill: 'solid',
+				dash: 'dashed',
+			},
+		})
+		canvasEditor.select(placeholderId)
+
+		try {
+			// 2. Generate the image
+			const imageUrl = await generateGeminiImage(prompt, contextImageUrls, signal)
+
+			if (signal.aborted) {
+				canvasEditor.deleteShape(placeholderId)
+				return
+			}
+
+			// 3. Replace placeholder with actual image or show error
+			if (imageUrl) {
+				canvasEditor.deleteShape(placeholderId)
+				onPlaceImageOnCanvas(imageUrl)
+			} else {
+				canvasEditor.updateShape({
+					id: placeholderId,
+					type: 'geo',
+					props: {
+						color: 'red',
+						fill: 'solid',
+						richText: toRichText(`\u274C Image generation failed\n\n"${prompt.slice(0, 60)}${prompt.length > 60 ? '...' : ''}"`),
+					},
+				})
+			}
+		} catch (err: any) {
+			if (err.name === 'AbortError' || signal.aborted) {
+				canvasEditor.deleteShape(placeholderId)
+				return
+			}
+			console.error(err)
+			canvasEditor.updateShape({
+				id: placeholderId,
+				type: 'geo',
+				props: {
+					color: 'red',
+					fill: 'solid',
+					richText: toRichText(`\u274C Image generation failed\n\n"${prompt.slice(0, 60)}${prompt.length > 60 ? '...' : ''}"`),
+				},
+			})
+		}
+	}, [canvasEditor, generateGeminiImage, onPlaceImageOnCanvas])
 
 	const queueAutoImagePrompt = useCallback((prompt: string, source: AutoImageSource) => {
 		const trimmedPrompt = prompt.trim().replace(/\s+/g, ' ').slice(0, 900)
@@ -653,13 +756,16 @@ function RoomWrapper({
 			return
 		}
 
-		if (autoImageProcessingRef.current) {
-			autoImageQueueRef.current = { prompt: trimmedPrompt, source }
-			return
+		if (autoImageDebounceTimerRef.current) {
+			clearTimeout(autoImageDebounceTimerRef.current)
 		}
 
-		void processAutoImagePrompt(trimmedPrompt, source)
-	}, [autoGenerateImages, processAutoImagePrompt])
+		autoImageDebounceTimerRef.current = setTimeout(() => {
+			setLastAutoImagePrompt(trimmedPrompt)
+			setLastAutoImageSource(source)
+			void generateAndPlaceImageOnCanvas(trimmedPrompt)
+		}, 1000)
+	}, [autoGenerateImages, generateAndPlaceImageOnCanvas])
 
 	useEffect(() => {
 		const handleAgentCmd = (e: Event) => {
@@ -674,10 +780,6 @@ function RoomWrapper({
 
 	useEffect(() => {
 		setLocalStorageItem(AUTO_IMAGE_MODE_KEY, String(autoGenerateImages))
-
-		if (!autoGenerateImages) {
-			autoImageQueueRef.current = null
-		}
 	}, [autoGenerateImages])
 	const [isDesktopLayout, setIsDesktopLayout] = useState(() => getIsDesktopLayout())
 	const [leftPanelWidth, setLeftPanelWidth] = useState(() =>
@@ -846,10 +948,7 @@ function RoomWrapper({
 		}
 
 		if (suggestion.type === 'image' && typeof suggestion.data?.prompt === 'string') {
-			const imageUrl = await generateImage(suggestion.data.prompt)
-			if (imageUrl) {
-				onPlaceImageOnCanvas(imageUrl)
-			}
+			await generateAndPlaceImageOnCanvas(suggestion.data.prompt)
 			return
 		}
 
@@ -863,9 +962,8 @@ function RoomWrapper({
 		addCalendarEventFromSuggestion,
 		addDeadlineTaskFromCalendarSuggestion,
 		addKanbanTaskFromSuggestion,
-		generateImage,
+		generateAndPlaceImageOnCanvas,
 		generateVideo,
-		onPlaceImageOnCanvas,
 		onPlaceTextOnCanvas,
 	])
 
