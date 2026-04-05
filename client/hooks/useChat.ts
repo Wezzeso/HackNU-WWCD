@@ -52,13 +52,19 @@ export function useChat(roomId: string, userId: string, userName: string, userCo
 	useEffect(() => {
 		if (!roomId || !userId) return
 
+		let disposed = false
+		let activeSocket: WebSocket | null = null
 		shouldReconnectRef.current = true
 
 		const scheduleReconnect = () => {
-			if (!shouldReconnectRef.current || reconnectTimerRef.current) return
+			if (disposed || !shouldReconnectRef.current || reconnectTimerRef.current) return
 
 			const timeout = Math.min(1000 * 2 ** reconnectAttemptRef.current, 5000)
 			reconnectTimerRef.current = setTimeout(() => {
+				if (disposed) {
+					reconnectTimerRef.current = null
+					return
+				}
 				reconnectTimerRef.current = null
 				reconnectAttemptRef.current += 1
 				connect()
@@ -68,12 +74,17 @@ export function useChat(roomId: string, userId: string, userName: string, userCo
 		const connect = () => {
 			void (async () => {
 				const url = await resolveWsUrl(`/api/chat/${roomId}`)
-				if (!shouldReconnectRef.current) return
+				if (disposed || !shouldReconnectRef.current) return
 
 				const ws = new WebSocket(url)
+				activeSocket = ws
 				wsRef.current = ws
 
 				ws.onopen = () => {
+					if (disposed || wsRef.current !== ws) {
+						ws.close()
+						return
+					}
 					reconnectAttemptRef.current = 0
 					setIsConnected(true)
 					ws.send(JSON.stringify({ type: 'join', userId, userName, userColor }))
@@ -139,11 +150,17 @@ export function useChat(roomId: string, userId: string, userName: string, userCo
 				}
 
 				ws.onclose = () => {
+					if (wsRef.current === ws) {
+						wsRef.current = null
+					}
 					setIsConnected(false)
 					scheduleReconnect()
 				}
 
 				ws.onerror = () => {
+					if (wsRef.current === ws) {
+						wsRef.current = null
+					}
 					setIsConnected(false)
 				}
 			})()
@@ -152,12 +169,18 @@ export function useChat(roomId: string, userId: string, userName: string, userCo
 		connect()
 
 		return () => {
+			disposed = true
 			shouldReconnectRef.current = false
 			if (reconnectTimerRef.current) {
 				clearTimeout(reconnectTimerRef.current)
 				reconnectTimerRef.current = null
 			}
-			wsRef.current?.close()
+			if (activeSocket && activeSocket.readyState < WebSocket.CLOSING) {
+				activeSocket.close()
+			}
+			if (wsRef.current === activeSocket) {
+				wsRef.current = null
+			}
 			typingTimeoutsRef.current.forEach(t => clearTimeout(t))
 		}
 	}, [roomId, userId, userName, userColor])

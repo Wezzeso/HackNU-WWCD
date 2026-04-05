@@ -133,6 +133,7 @@ export function TldrawContextualToolbar() {
 		getCurrentStampReaction(editor)
 	)
 	const [isExpanding, setIsExpanding] = useState(false)
+	const [agentCommand, setAgentCommand] = useState('')
 
 	const currentToolId = useValue('current tool id', () => editor.getCurrentToolId(), [editor])
 	const currentGeo = useValue(
@@ -476,6 +477,36 @@ export function TldrawContextualToolbar() {
 					</button>
 				</div>
 			)}
+
+			{/* Simple Command Input for AI */}
+			<div className="tldraw-contextual-toolbar__stylebar" style={{ padding: '0 8px', marginBottom: '8px' }}>
+				<form 
+					className="flex w-full items-center gap-2 rounded-md bg-white px-2 py-1 shadow-sm ring-1 ring-black/5"
+					onSubmit={(e) => {
+						e.preventDefault()
+						if (!agentCommand.trim()) return
+						const cmd = agentCommand.trim()
+						setAgentCommand('')
+						window.dispatchEvent(new CustomEvent('hacknu:agent-cmd', { detail: { text: cmd } }))
+					}}
+				>
+					<Sparkles size={14} className="text-violet-500" />
+					<input 
+						type="text" 
+						placeholder="Ask AI to do something..."
+						value={agentCommand}
+						onChange={(e) => setAgentCommand(e.target.value)}
+						className="min-w-[200px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
+					/>
+					<button 
+						type="submit"
+						disabled={!agentCommand.trim()}
+						className="flex size-6 items-center justify-center rounded text-violet-500 transition hover:bg-violet-50 disabled:opacity-50"
+					>
+						<ArrowRight size={14} />
+					</button>
+				</form>
+			</div>
 
 			<TldrawUiToolbar
 				className="tldraw-contextual-toolbar__mainbar"

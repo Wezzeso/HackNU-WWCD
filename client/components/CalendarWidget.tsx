@@ -174,7 +174,7 @@ function getEntryDots(entries: PlannerEntry[]) {
 }
 
 export function CalendarWidget({ userId, isOpen }: CalendarWidgetProps) {
-	const storageKey = `hacknu-planner-${userId}`
+	const storageKey = `hacknu-planner-global`
 	const today = useMemo(() => new Date(), [])
 	const [currentMonth, setCurrentMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
 	const [selectedDateKey, setSelectedDateKey] = useState(() => formatDateKey(today))
@@ -198,7 +198,6 @@ export function CalendarWidget({ userId, isOpen }: CalendarWidgetProps) {
 			const { data, error } = await supabase
 				.from('planner_events')
 				.select('id, user_id, event_date, event_time, title, note, tag')
-				.eq('user_id', userId)
 				.order('event_date', { ascending: true })
 				.order('event_time', { ascending: true })
 
@@ -226,8 +225,17 @@ export function CalendarWidget({ userId, isOpen }: CalendarWidgetProps) {
 		}
 
 		loadEntries()
+		
+		const handleRefresh = () => {
+			if (!isCancelled) {
+				loadEntries()
+			}
+		}
+		window.addEventListener('hacknu:calendar-refresh', handleRefresh)
+
 		return () => {
 			isCancelled = true
+			window.removeEventListener('hacknu:calendar-refresh', handleRefresh)
 		}
 	}, [storageKey, userId])
 
@@ -312,7 +320,6 @@ export function CalendarWidget({ userId, isOpen }: CalendarWidgetProps) {
 			.from('planner_events')
 			.delete()
 			.eq('id', entryId)
-			.eq('user_id', userId)
 
 		if (error) {
 			setErrorMessage('Could not remove this event from Supabase.')

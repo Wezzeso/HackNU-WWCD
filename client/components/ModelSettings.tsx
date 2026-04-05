@@ -12,7 +12,7 @@ export interface ModelConfig {
 
 const DEFAULT_MODELS: ModelConfig = {
 	llm: 'gemini-2.5-flash',
-	image: 'flux-2-pro',
+	image: 'reve',
 	video: 'nano-banana-2',
 }
 
@@ -22,8 +22,7 @@ const LLM_OPTIONS = [
 ]
 
 const IMAGE_OPTIONS = [
-	{ value: 'flux-2-pro', label: 'Flux 2 Pro' },
-	{ value: 'flux-2-pro-preview', label: 'Flux 2 Pro Preview' },
+	{ value: 'reve', label: 'Reve' },
 ]
 
 const VIDEO_OPTIONS = [

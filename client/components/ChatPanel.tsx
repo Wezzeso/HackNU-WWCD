@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage } from '../hooks/useChat'
 import type { AgentSuggestion, AgentMessage, AgentStatus } from '../hooks/useAgentSync'
-import { useImageGeneration } from '../hooks/useImageGeneration'
 import './ChatPanel.css'
 
 interface ChatPanelProps {
@@ -18,6 +17,9 @@ interface ChatPanelProps {
 	onDismissSuggestion?: (id: string) => void
 	onAddCalendarEvent?: (data: Record<string, unknown>) => void
 	onPlaceImageOnCanvas?: (imageUrl: string) => void
+	onPlaceTextOnCanvas?: (text: string, title?: string) => void
+	onExecuteSuggestion?: (suggestion: AgentSuggestion) => Promise<void> | void
+	onSubmitTextInput?: (text: string) => void
 }
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '🎉', '🤔', '👀']
@@ -25,7 +27,6 @@ const EMOJI_REACTIONS = ['👍', '❤️', '😂', '🎉', '🤔', '👀']
 type TimelineItem =
 	| { kind: 'chat'; data: ChatMessage; ts: number }
 	| { kind: 'suggestion'; data: AgentSuggestion; ts: number }
-	| { kind: 'agent-message'; data: AgentMessage; ts: number }
 
 export function ChatPanel({
 	roomId, userId, userName, userColor,
@@ -37,6 +38,9 @@ export function ChatPanel({
 	onDismissSuggestion,
 	onAddCalendarEvent,
 	onPlaceImageOnCanvas,
+	onPlaceTextOnCanvas,
+	onExecuteSuggestion,
+	onSubmitTextInput,
 }: ChatPanelProps) {
 	const {
 		messages, typingUsers,
@@ -44,11 +48,10 @@ export function ChatPanel({
 		isConnected, unreadCount, resetUnread,
 	} = useChat(roomId, userId, userName, userColor, isOpen)
 
-	const { isGenerating, imageUrl, generateImage, reset: resetImage } = useImageGeneration()
-
 	const [input, setInput] = useState('')
 	const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
 	const [showEmojiFor, setShowEmojiFor] = useState<string | null>(null)
+	const [approvingSuggestionId, setApprovingSuggestionId] = useState<string | null>(null)
 	const messagesEndRef = useRef<HTMLDivElement>(null)
 	const inputRef = useRef<HTMLInputElement>(null)
 
@@ -64,8 +67,10 @@ export function ChatPanel({
 	}, [messages, agentSuggestions, agentMessages])
 
 	const handleSend = () => {
-		if (!input.trim()) return
-		sendMessage(input.trim(), replyTo?.id)
+		const trimmedInput = input.trim()
+		if (!trimmedInput) return
+		sendMessage(trimmedInput, replyTo?.id)
+		onSubmitTextInput?.(trimmedInput)
 		setInput('')
 		setReplyTo(null)
 	}
@@ -91,16 +96,40 @@ export function ChatPanel({
 
 	const handleApprove = async (suggestion: AgentSuggestion) => {
 		onApproveSuggestion?.(suggestion.id)
+		setApprovingSuggestionId(suggestion.id)
 
-		if (suggestion.type === 'calendar' && suggestion.data) {
-			onAddCalendarEvent?.(suggestion.data)
-		}
+		try {
+			const summaryText = (() => {
+				const lines = [suggestion.description.trim()]
+				if (typeof suggestion.data?.prompt === 'string' && suggestion.data.prompt.trim()) {
+					lines.push(`Prompt: ${suggestion.data.prompt.trim()}`)
+				}
+				if (typeof suggestion.data?.taskText === 'string' && suggestion.data.taskText.trim()) {
+					lines.push(`Task: ${suggestion.data.taskText.trim()}`)
+				}
+				if (typeof suggestion.data?.date === 'string' || typeof suggestion.data?.time === 'string') {
+					const schedule = [suggestion.data?.date, suggestion.data?.time].filter(Boolean).join(' ')
+					if (schedule) lines.push(`Schedule: ${schedule}`)
+				}
+				return lines.filter(Boolean).join('\n')
+			})()
 
-		if (suggestion.type === 'image' && suggestion.data?.prompt) {
-			const url = await generateImage(suggestion.data.prompt as string)
-			if (url) {
-				// Image generated successfully
+			if (summaryText) {
+				onPlaceTextOnCanvas?.(summaryText, suggestion.title)
 			}
+
+			if (onExecuteSuggestion) {
+				await onExecuteSuggestion(suggestion)
+				return
+			}
+
+			if (suggestion.type === 'calendar' && suggestion.data) {
+				onAddCalendarEvent?.(suggestion.data)
+			}
+		} finally {
+			setApprovingSuggestionId((currentValue) =>
+				currentValue === suggestion.id ? null : currentValue
+			)
 		}
 	}
 
@@ -109,7 +138,6 @@ export function ChatPanel({
 
 	const timeline: TimelineItem[] = [
 		...messages.map(m => ({ kind: 'chat' as const, data: m, ts: m.timestamp })),
-		...agentMessages.map(m => ({ kind: 'agent-message' as const, data: m, ts: m.timestamp })),
 	].sort((a, b) => a.ts - b.ts)
 
 	return (
@@ -126,26 +154,6 @@ export function ChatPanel({
 				)}
 
 				{timeline.map((item) => {
-					if (item.kind === 'agent-message') {
-						const msg = item.data
-						return (
-							<div key={msg.id} className="chat-message chat-message--agent">
-								<div className="chat-message__avatar chat-message__avatar--agent">
-									✨
-								</div>
-								<div className="chat-message__content">
-									<div className="chat-message__name" style={{ color: '#8b5cf6' }}>
-										AI Assistant
-									</div>
-									<div className="chat-message__bubble chat-message__bubble--agent">
-										<span>{msg.text}</span>
-										<span className="chat-message__time">{formatTime(msg.timestamp)}</span>
-									</div>
-								</div>
-							</div>
-						)
-					}
-
 					const msg = item.data as ChatMessage
 					const isOwn = msg.userId === userId
 					const replyMsg = msg.replyTo ? findReplyMessage(msg.replyTo) : null
@@ -240,9 +248,9 @@ export function ChatPanel({
 							<button
 								className="chat-suggestion__approve"
 								onClick={() => handleApprove(suggestion)}
-								disabled={isGenerating}
+								disabled={approvingSuggestionId === suggestion.id}
 							>
-								{isGenerating && suggestion.type === 'image' ? 'Generating...' : '✓ Approve'}
+								{approvingSuggestionId === suggestion.id ? 'Working...' : '✓ Approve'}
 							</button>
 							<button
 								className="chat-suggestion__dismiss"
@@ -253,54 +261,6 @@ export function ChatPanel({
 						</div>
 					</div>
 				))}
-
-				{/* Image generation result */}
-				{imageUrl && (
-					<div className="chat-suggestion chat-suggestion--result">
-						<div className="chat-suggestion__header">
-							<span className="chat-suggestion__icon">🖼️</span>
-							<span className="chat-suggestion__badge">Generated Image</span>
-						</div>
-						<img
-							src={imageUrl}
-							alt="AI generated"
-							className="chat-suggestion__image"
-							loading="lazy"
-						/>
-						<div className="chat-suggestion__actions">
-							<button
-								className="chat-suggestion__approve"
-								onClick={() => {
-									onPlaceImageOnCanvas?.(imageUrl)
-									resetImage()
-								}}
-							>
-								📌 Place on Canvas
-							</button>
-							<button
-								className="chat-suggestion__dismiss"
-								onClick={resetImage}
-							>
-								Dismiss
-							</button>
-						</div>
-					</div>
-				)}
-
-				{/* Agent thinking indicator */}
-				{agentStatus === 'thinking' && (
-					<div className="chat-message chat-message--agent">
-						<div className="chat-message__avatar chat-message__avatar--agent">✨</div>
-						<div className="chat-message__content">
-							<div className="chat-message__name" style={{ color: '#8b5cf6' }}>AI Assistant</div>
-							<div className="chat-message__bubble chat-message__bubble--agent">
-								<div className="chat-panel__typing-dots">
-									<span /><span /><span />
-								</div>
-							</div>
-						</div>
-					</div>
-				)}
 
 				<div ref={messagesEndRef} />
 			</div>

@@ -13,5 +13,5 @@ const myLocalRoomId = getLocalStorageItem('my-local-room-id') ?? createRoomId()
 setLocalStorageItem('my-local-room-id', myLocalRoomId)
 
 export function Root() {
-	return <Navigate to={`/${myLocalRoomId}`} />
+	return <Navigate to={`/${myLocalRoomId}`} replace />
 }

@@ -2,6 +2,18 @@ import { Router } from 'express'
 
 const router = Router()
 
+function parseInlineImagePart(dataUrl: string) {
+	const match = dataUrl.match(/^data:(.+);base64,(.+)$/)
+	if (!match) return null
+
+	return {
+		inlineData: {
+			mimeType: match[1],
+			data: match[2],
+		},
+	}
+}
+
 router.post('/', async (req, res) => {
 	try {
 		const apiKey = process.env.GEMINI_API_KEY
@@ -9,7 +21,15 @@ router.post('/', async (req, res) => {
 			return res.status(500).json({ error: 'Gemini API key not configured' })
 		}
 
-		const { prompt, context, stream: useStream } = req.body
+		const {
+			prompt,
+			context,
+			stream: useStream,
+			images,
+			temperature,
+			maxOutputTokens,
+			responseMimeType,
+		} = req.body
 		const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview'
 
 		const systemPrompt = `You are an AI assistant that is a participant in a collaborative whiteboard room. 
@@ -20,12 +40,23 @@ Be concise, creative, and actionable in your responses.
 Format responses with markdown when helpful.
 Keep responses brief unless asked for detail.`
 
+		const imageParts = Array.isArray(images)
+			? images
+					.map((image) =>
+						image && typeof image.dataUrl === 'string'
+							? parseInlineImagePart(image.dataUrl)
+							: null
+					)
+					.filter(Boolean)
+			: []
+
 		const body = {
 			contents: [
 				{
 					role: 'user',
 					parts: [
-						{ text: context ? `Board Context:\n${context}\n\nUser Request: ${prompt}` : prompt }
+						{ text: context ? `Board Context:\n${context}\n\nUser Request: ${prompt}` : prompt },
+						...imageParts,
 					]
 				}
 			],
@@ -33,8 +64,10 @@ Keep responses brief unless asked for detail.`
 				parts: [{ text: systemPrompt }]
 			},
 			generationConfig: {
-				temperature: 0.7,
-				maxOutputTokens: 2048,
+				temperature: typeof temperature === 'number' ? temperature : 0.7,
+				maxOutputTokens:
+					typeof maxOutputTokens === 'number' ? maxOutputTokens : 2048,
+				...(typeof responseMimeType === 'string' ? { responseMimeType } : {}),
 			}
 		}
 

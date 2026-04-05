@@ -24,20 +24,30 @@ You analyze conversation transcripts and detect actionable intents.
 Your job is to extract ONLY clear, actionable items. Return a JSON array of intents.
 
 Each intent object must have:
-- "type": one of "calendar", "task", "image", "summary"
+- "type": one of "calendar", "task", "image", "video", "summary"
 - "title": short title for the action
 - "description": brief description
 - "data": relevant data object
 
-For "calendar" type, data must include: { "date": "YYYY-MM-DD", "time": "HH:MM" }
+For "calendar" type, data must include:
+{ "date": "YYYY-MM-DD", "time": "HH:MM", "tag": "deadline" | "celebration" | "simple" }
+Use "deadline" for due dates, submissions, exams, meetings with due pressure, or anything described as a deadline.
+Use "celebration" for birthdays, anniversaries, holidays, parties, or celebratory events.
+Use "simple" for all other calendar events.
+When the user mentions a birthday, keep the person's name in the title.
 For "task" type, data must include: { "taskText": "short description" }
 For "image" type, data must include: { "prompt": "image generation prompt" }
+For "video" type, data must include: { "prompt": "video generation prompt" }
 For "summary" type, data can be empty
 
 If there are no actionable items, return an empty array: []
 
 Today's date is ${new Date().toISOString().split('T')[0]}.
 Current year is ${new Date().getFullYear()}.
+
+Examples:
+- "deadline for physics project on 2026-04-10 at 18:00" -> calendar with tag "deadline"
+- "Sarah's birthday is May 3" -> calendar with tag "celebration"
 
 Be conservative — only extract items when the intent is clear.
 RESPOND WITH ONLY VALID JSON. No markdown, no explanation.`
@@ -80,7 +90,7 @@ RESPOND WITH ONLY VALID JSON. No markdown, no explanation.`
 		const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
 
 		let intents: Array<{
-			type: 'calendar' | 'task' | 'image' | 'summary'
+			type: 'calendar' | 'task' | 'image' | 'video' | 'summary'
 			title: string
 			description: string
 			data?: Record<string, unknown>
@@ -97,11 +107,23 @@ RESPOND WITH ONLY VALID JSON. No markdown, no explanation.`
 
 		const suggestions = []
 		for (const intent of intents) {
+			const normalizedData =
+				intent.type === 'calendar' && intent.data
+					? {
+							...intent.data,
+							tag:
+								intent.data.tag === 'deadline' ||
+								intent.data.tag === 'celebration' ||
+								intent.data.tag === 'simple'
+									? intent.data.tag
+									: 'simple',
+						}
+					: intent.data
 			const suggestion = broadcastAgentSuggestion(roomId, {
 				type: intent.type === 'task' ? 'action' : intent.type,
 				title: intent.title,
 				description: intent.description,
-				data: intent.data,
+				data: normalizedData,
 			})
 			if (suggestion) suggestions.push(suggestion)
 		}

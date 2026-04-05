@@ -10,13 +10,16 @@ import { setupMusicSync } from './websocket/musicSync.js'
 import { setupSignaling } from './websocket/signaling.js'
 import { setupAgentSync } from './websocket/agentSync.js'
 import { assetRoutes } from './routes/assets.js'
+import { boardGenerateRoutes } from './routes/boardGenerate.js'
 import { geminiRoutes } from './routes/gemini.js'
+import { handwritingRoutes } from './routes/handwriting.js'
 import { higgsFieldRoutes } from './routes/higgsfield.js'
 import { calendarRoutes } from './routes/calendar.js'
 import { telegramRoutes } from './routes/telegram.js'
 import { unfurlRoutes } from './routes/unfurl.js'
 import { livekitRoutes } from './routes/livekit.js'
 import { agentVoiceRoutes } from './routes/agentVoice.js'
+import { openviduRoutes } from './routes/openvidu.js'
 
 dotenv.config()
 
@@ -29,13 +32,16 @@ app.use(express.json({ limit: '50mb' }))
 
 // REST API Routes
 app.use('/api/uploads', assetRoutes)
+app.use('/api/ai/board-generate', boardGenerateRoutes)
 app.use('/api/ai/gemini', geminiRoutes)
+app.use('/api/ai/handwriting', handwritingRoutes)
 app.use('/api/ai/higgsfield', higgsFieldRoutes)
 app.use('/api/calendar', calendarRoutes)
 app.use('/api/telegram', telegramRoutes)
 app.use('/api/unfurl', unfurlRoutes)
 app.use('/api/livekit', livekitRoutes)
 app.use('/api/agent', agentVoiceRoutes)
+app.use('/api/openvidu', openviduRoutes)
 
 // Health check
 app.get('/api/health', (_req, res) => {

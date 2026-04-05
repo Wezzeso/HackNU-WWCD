@@ -118,6 +118,9 @@ export function useWebRTC(
 	const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const reconnectAttemptRef = useRef(0)
 	const shouldReconnectRef = useRef(true)
+	const hasActivatedSignalingRef = useRef(false)
+	const connectPromiseRef = useRef<Promise<void> | null>(null)
+	const signalingGenerationRef = useRef(0)
 
 	const ICE_SERVERS = useMemo(() => {
 		const servers: RTCIceServer[] = [
@@ -374,110 +377,42 @@ export function useWebRTC(
 		)
 	}, [isScreenSharing])
 
-	const leaveChannel = useCallback(() => {
-		clearPeerConnections()
-		stopLocalMedia()
-		setActiveChannelId(null)
-		setActiveChannelKind(null)
-		setIsMuted(false)
-		setIsCameraOff(false)
-		setIsScreenSharing(false)
-		setError(null)
+	const connectSignaling = useCallback(() => {
+		if (!roomId || !userId) {
+			return Promise.resolve()
+		}
 
 		if (wsRef.current?.readyState === WebSocket.OPEN) {
-			wsRef.current.send(JSON.stringify({ type: 'leave-channel' }))
-		}
-	}, [clearPeerConnections, stopLocalMedia])
-
-	const joinChannel = useCallback(
-		async (channel: MediaChannel, options?: { startMuted?: boolean }) => {
-			if (!roomId) return
-			if (wsRef.current?.readyState !== WebSocket.OPEN) {
-				setError('Realtime signaling is still connecting. Try again in a moment.')
-				return
-			}
-
-			setError(null)
-			setIsJoiningChannel(true)
-
-			try {
-				clearPeerConnections()
-				stopLocalMedia()
-
-				const stream = await navigator.mediaDevices.getUserMedia({
-					audio: true,
-					video: channel.kind === 'video',
-				})
-				const startMuted = !!options?.startMuted
-				const audioTrack = stream.getAudioTracks()[0]
-				if (audioTrack) {
-					audioTrack.enabled = !startMuted
-				}
-
-				localStreamRef.current = stream
-				setLocalStream(stream)
-				setDisplayStream(stream)
-				setActiveChannelId(channel.id)
-				setActiveChannelKind(channel.kind)
-				setIsMuted(startMuted)
-				setIsCameraOff(channel.kind !== 'video')
-				setIsScreenSharing(false)
-
-				wsRef.current.send(
-					JSON.stringify({
-						type: 'set-channel',
-						channelId: channel.id,
-						channelKind: channel.kind,
-						audio: !startMuted,
-						video: channel.kind === 'video',
-						screenShare: false,
-					})
-				)
-			} catch (err) {
-				console.error('[webrtc] Failed to join channel:', err)
-				leaveChannel()
-				setError('Camera or microphone access was blocked.')
-			} finally {
-				setIsJoiningChannel(false)
-			}
-		},
-		[clearPeerConnections, leaveChannel, roomId, stopLocalMedia]
-	)
-
-	const joinCall = useCallback(async () => {
-		await joinChannel(DEFAULT_VIDEO_CHANNEL)
-	}, [joinChannel])
-
-	useEffect(() => {
-		if (!roomId || !userId) return
-
-		shouldReconnectRef.current = true
-
-		const scheduleReconnect = () => {
-			if (!shouldReconnectRef.current || reconnectTimerRef.current) return
-
-			const timeout = Math.min(1000 * 2 ** reconnectAttemptRef.current, 5000)
-			reconnectTimerRef.current = setTimeout(() => {
-				reconnectTimerRef.current = null
-				reconnectAttemptRef.current += 1
-				connect()
-			}, timeout)
+			return Promise.resolve()
 		}
 
-		const connect = () => {
-			void (async () => {
-				const url = await resolveWsUrl(`/api/signal/${roomId}`)
-				if (!shouldReconnectRef.current) return
+		if (connectPromiseRef.current) {
+			return connectPromiseRef.current
+		}
 
+		hasActivatedSignalingRef.current = true
+		setError(null)
+		const generation = signalingGenerationRef.current
+
+		connectPromiseRef.current = (async () => {
+			const url = await resolveWsUrl(`/api/signal/${roomId}`)
+			if (!shouldReconnectRef.current || generation !== signalingGenerationRef.current) return
+
+			await new Promise<void>((resolve, reject) => {
 				const ws = new WebSocket(url)
 				wsRef.current = ws
 
 				ws.onopen = () => {
+					if (generation !== signalingGenerationRef.current || wsRef.current !== ws) {
+						ws.close()
+						return
+					}
 					reconnectAttemptRef.current = 0
 					setIsConnected(true)
 					setError(null)
 					sendJoinPayload(ws)
 					syncCurrentChannel(ws)
+					resolve()
 				}
 
 				ws.onmessage = async (event) => {
@@ -525,45 +460,142 @@ export function useWebRTC(
 				}
 
 				ws.onclose = () => {
+					if (wsRef.current === ws) {
+						wsRef.current = null
+					}
+					connectPromiseRef.current = null
 					setIsConnected(false)
 					setParticipants([])
 					clearPeerConnections()
-					if (shouldReconnectRef.current) {
-						setError('Reconnecting to realtime voice...')
-						scheduleReconnect()
+
+					if (shouldReconnectRef.current && hasActivatedSignalingRef.current) {
+						const timeout = Math.min(1000 * 2 ** reconnectAttemptRef.current, 5000)
+						if (!reconnectTimerRef.current) {
+							setError('Reconnecting to realtime voice...')
+							reconnectTimerRef.current = setTimeout(() => {
+								reconnectTimerRef.current = null
+								reconnectAttemptRef.current += 1
+								void connectSignaling()
+							}, timeout)
+						}
 					}
 				}
 
 				ws.onerror = () => {
+					if (wsRef.current === ws) {
+						wsRef.current = null
+					}
 					setIsConnected(false)
 				}
-			})()
-		}
 
-		connect()
+				if (ws.readyState === WebSocket.CLOSED) {
+					reject(new Error('Failed to open signaling socket.'))
+				}
+			})
+		})()
 
-		return () => {
-			shouldReconnectRef.current = false
-			if (reconnectTimerRef.current) {
-				clearTimeout(reconnectTimerRef.current)
-				reconnectTimerRef.current = null
-			}
-			wsRef.current?.close()
-			leaveChannel()
-		}
+		return connectPromiseRef.current.finally(() => {
+			connectPromiseRef.current = null
+		})
 	}, [
 		clearPeerConnections,
 		createPeerConnection,
 		flushPendingIceCandidates,
-		leaveChannel,
 		queueIceCandidate,
 		roomId,
 		sendJoinPayload,
 		syncCurrentChannel,
-		userColor,
 		userId,
-		userName,
 	])
+
+	const leaveChannel = useCallback(() => {
+		clearPeerConnections()
+		stopLocalMedia()
+		setActiveChannelId(null)
+		setActiveChannelKind(null)
+		setIsMuted(false)
+		setIsCameraOff(false)
+		setIsScreenSharing(false)
+		setError(null)
+
+		if (wsRef.current?.readyState === WebSocket.OPEN) {
+			wsRef.current.send(JSON.stringify({ type: 'leave-channel' }))
+		}
+	}, [clearPeerConnections, stopLocalMedia])
+
+	const joinChannel = useCallback(
+		async (channel: MediaChannel, options?: { startMuted?: boolean }) => {
+			if (!roomId) return
+
+			setError(null)
+			setIsJoiningChannel(true)
+
+			try {
+				await connectSignaling()
+				clearPeerConnections()
+				stopLocalMedia()
+
+				const stream = await navigator.mediaDevices.getUserMedia({
+					audio: true,
+					video: channel.kind === 'video',
+				})
+				const startMuted = !!options?.startMuted
+				const audioTrack = stream.getAudioTracks()[0]
+				if (audioTrack) {
+					audioTrack.enabled = !startMuted
+				}
+
+				localStreamRef.current = stream
+				setLocalStream(stream)
+				setDisplayStream(stream)
+				setActiveChannelId(channel.id)
+				setActiveChannelKind(channel.kind)
+				setIsMuted(startMuted)
+				setIsCameraOff(channel.kind !== 'video')
+				setIsScreenSharing(false)
+
+				wsRef.current?.send(
+					JSON.stringify({
+						type: 'set-channel',
+						channelId: channel.id,
+						channelKind: channel.kind,
+						audio: !startMuted,
+						video: channel.kind === 'video',
+						screenShare: false,
+					})
+				)
+			} catch (err) {
+				console.error('[webrtc] Failed to join channel:', err)
+				leaveChannel()
+				setError(err instanceof Error && err.message ? err.message : 'Camera or microphone access was blocked.')
+			} finally {
+				setIsJoiningChannel(false)
+			}
+		},
+		[clearPeerConnections, connectSignaling, leaveChannel, roomId, stopLocalMedia]
+	)
+
+	const joinCall = useCallback(async () => {
+		await joinChannel(DEFAULT_VIDEO_CHANNEL)
+	}, [joinChannel])
+
+	useEffect(() => {
+		shouldReconnectRef.current = true
+		signalingGenerationRef.current += 1
+		return () => {
+			shouldReconnectRef.current = false
+			signalingGenerationRef.current += 1
+			if (reconnectTimerRef.current) {
+				clearTimeout(reconnectTimerRef.current)
+				reconnectTimerRef.current = null
+			}
+			if (wsRef.current?.readyState !== WebSocket.CLOSED) {
+				wsRef.current?.close()
+			}
+			wsRef.current = null
+			leaveChannel()
+		}
+	}, [leaveChannel])
 
 	useEffect(() => {
 		if (!activeChannelId || !activeChannelKind) {
@@ -574,8 +606,7 @@ export function useWebRTC(
 		const inChannelParticipants = participants.filter(
 			(participant) =>
 				participant.peerId !== sessionPeerId &&
-				participant.channelId === activeChannelId &&
-				participant.channelKind === activeChannelKind
+				participant.channelId === activeChannelId
 		)
 		const participantIds = new Set(inChannelParticipants.map((participant) => participant.peerId))
 

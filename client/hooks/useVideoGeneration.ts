@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef } from 'react'
 
+interface GenerationErrorPayload {
+	error?: string
+	details?: string
+}
+
 interface UseVideoGenerationReturn {
 	isGenerating: boolean
 	videoUrl: string | null
@@ -49,7 +54,9 @@ export function useVideoGeneration(): UseVideoGenerationReturn {
 			})
 
 			if (!res.ok) {
-				throw new Error('Failed to start video generation')
+				const payload = (await res.json().catch(() => null)) as GenerationErrorPayload | null
+				const message = payload?.details || payload?.error || 'Failed to start video generation'
+				throw new Error(message)
 			}
 
 			const data = await res.json()
